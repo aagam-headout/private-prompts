@@ -228,6 +228,27 @@ body {
   padding-right: 6px;
 }
 
+/* ---- stale-enhanced notice ---- */
+
+.stale-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  border-left: 2px solid var(--error);
+  background: var(--panel);
+  color: var(--fg);
+  padding: 8px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.stale-actions { display: flex; gap: 6px; }
+
+.history-delete:not(:disabled):hover { color: var(--error); border-color: var(--error); }
+.history-delete:disabled { opacity: 0.45; cursor: not-allowed; }
+
 #editor {
   display: block;
   width: 100%;

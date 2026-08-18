@@ -1,7 +1,7 @@
 {
   "name": "privateprompt",
   "description": "Write and enhance prompts in a local-only browser vault, outside any repo's telemetry — Claude reads the saved file as a reference instead of the prompt ever appearing in chat.",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "author": {
     "name": "aagam-headout"
   },

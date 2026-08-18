@@ -102,7 +102,12 @@ drafts live in a runtime-specific directory under the home folder
   to a shared `prompt.md`.
 - Every Save also appends a timestamped snapshot to
   `prompts/<sha1(cwd)>.history.jsonl` (capped at the last 50), which the page's
-  **History** view lists — this is a scratch log, not a durable archive.
+  **History** view lists with Copy / Restore / Delete per entry — this is a
+  scratch log, not a durable archive. Re-saving unchanged text adds no snapshot,
+  and a blank save is rejected rather than wiping the prompt file.
+- If the user edits Original after enhancing it, the page flags the Enhanced
+  draft as stale and asks whether to delete it before saving, so the file never
+  pairs a new Original with an Enhanced built from older text.
 - The server has no authentication and binds only to `127.0.0.1`. Other
   processes under the same local account can still reach it.
 - To stop the server: `pkill -f "privateprompt-server.js"`.

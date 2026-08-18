@@ -27,7 +27,12 @@ as reference — the prompt itself never has to appear in the chat transcript.
 Drafts live per-project (keyed by a hash of the working directory) under a
 per-runtime home directory (`~/.codex/`, `~/.claude/`, or
 `~/.cursor/private-prompts/`), and every save keeps up to 50 timestamped
-history snapshots in the page's **History** tab.
+history snapshots in the page's **History** tab, each with **Copy**,
+**Restore**, and **Delete**.
+
+Editing Original after an Enhance run marks the Enhanced draft stale and asks
+whether to delete it, so a leftover Enhanced version never rides along with a
+prompt it was not generated from.
 
 ## Install
 

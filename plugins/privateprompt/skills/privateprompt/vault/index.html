@@ -40,6 +40,14 @@
         <span id="charcount" class="charcount">0 chars</span>
       </div>
 
+      <div id="staleNotice" class="stale-notice" hidden>
+        <span id="staleText">Original changed after Enhance ran, so the Enhanced draft no longer matches it.</span>
+        <span class="stale-actions">
+          <button id="discardEnhanced" class="btn-text-only" type="button">Delete Enhanced</button>
+          <button id="keepEnhanced" class="btn-text-only" type="button">Keep it</button>
+        </span>
+      </div>
+
       <textarea id="editor" rows="16" placeholder="Write your prompt here..." spellcheck="true"></textarea>
     </section>
 
@@ -122,6 +130,9 @@ const editorView = document.getElementById('editorView');
 const historyView = document.getElementById('historyView');
 const historyList = document.getElementById('historyList');
 const historyEmpty = document.getElementById('historyEmpty');
+const staleNotice = document.getElementById('staleNotice');
+const discardEnhancedBtn = document.getElementById('discardEnhanced');
+const keepEnhancedBtn = document.getElementById('keepEnhanced');
 
 const cwd = new URLSearchParams(location.search).get('cwd') || '';
 let session = { model: null, repo: null, branch: null, runtime: 'codex', cliAvailable: true, cliAvailability: {} };
@@ -133,6 +144,14 @@ let defaultModelByCli = {};
 // Switching tabs swaps the textarea's bound buffer; typing edits whichever is active.
 const drafts = { original: '', enhanced: '' };
 let activeTab = 'original';
+
+// The exact Original text that produced the current Enhanced draft. Once the
+// two diverge, Enhanced is stale — saving it (or saving both) would pair the
+// new Original with an Enhanced built from text that no longer exists.
+let enhancedSource = null;
+let enhancedStale = false;
+let staleAcknowledged = false; // user chose "Keep it" — stop nagging until the next Enhance
+let lastSaved = null; // exact bytes last written, so an unchanged re-Save is a no-op
 
 function setStatus(msg, isError) {
   status.textContent = msg || '';
@@ -167,7 +186,8 @@ function updateCharcount() {
 }
 
 function relativeTime(ts) {
-  const diffSec = Math.round((Date.now() - ts) / 1000);
+  // Math.max guards a clock that moved backwards — "-3s ago" reads as a bug.
+  const diffSec = Math.max(0, Math.round((Date.now() - ts) / 1000));
   if (diffSec < 5) return 'just now';
   if (diffSec < 60) return diffSec + 's ago';
   const diffMin = Math.round(diffSec / 60);
@@ -175,6 +195,86 @@ function relativeTime(ts) {
   const diffHr = Math.round(diffMin / 60);
   if (diffHr < 24) return diffHr + 'h ago';
   return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// Writes a draft buffer and mirrors it into the textarea when that draft is the
+// one on screen. Assigning drafts.X directly is a trap: the next switchTab()
+// stashes the stale textarea value straight back over it.
+function setDraft(name, value) {
+  drafts[name] = value;
+  if (activeTab === name) {
+    editor.value = value;
+    updateCharcount();
+  }
+}
+
+function setStale(isStale) {
+  enhancedStale = isStale && !!drafts.enhanced.trim();
+  staleNotice.hidden = !enhancedStale || staleAcknowledged;
+}
+
+// Enhanced now exists and matches `source` — the Original text it came from.
+function setEnhanced(text, source) {
+  drafts.enhanced = text;
+  enhancedSource = source;
+  staleAcknowledged = false;
+  tabEnhanced.disabled = false;
+  saveBothCheckbox.disabled = !drafts.original.trim();
+  enhancedDot.hidden = false;
+  setStale(false);
+}
+
+function clearEnhanced() {
+  // Leave the Enhanced tab before blanking it: switchTab() stashes the visible
+  // textarea into the outgoing draft, which would resurrect the text.
+  if (activeTab === 'enhanced') switchTab('original');
+  drafts.enhanced = '';
+  enhancedSource = null;
+  staleAcknowledged = false;
+  setStale(false);
+  tabEnhanced.disabled = true;
+  enhancedDot.hidden = true;
+  saveBothCheckbox.checked = false;
+  saveBothCheckbox.disabled = true;
+}
+
+// A "Save both versions" file round-trips back into two drafts instead of
+// landing in Original as raw `## Original` / `## Enhanced` markdown.
+function splitSavedBoth(text) {
+  const m = /^##[ \t]*Original[ \t]*\n([\s\S]*?)\n##[ \t]*Enhanced[ \t]*\n([\s\S]*)$/.exec(String(text).trim());
+  if (!m) return null;
+  const original = m[1].trim();
+  const enhanced = m[2].trim();
+  if (!original && !enhanced) return null;
+  return { original, enhanced };
+}
+
+// Clipboard API needs a secure context and can be blocked outright; fall back
+// to the execCommand path so Copy still works instead of just erroring.
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to the legacy path
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 function renderHistory(entries) {
@@ -202,12 +302,11 @@ function renderHistory(entries) {
     copyBtn.title = 'Copy to clipboard';
     copyBtn.textContent = 'Copy';
     copyBtn.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(entry.content);
+      if (await copyText(entry.content)) {
         copyBtn.textContent = 'Copied';
         setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
-      } catch {
-        setStatus('Copy failed — clipboard access was blocked.', true);
+      } else {
+        setStatus('Copy failed — clipboard access was blocked. Restore it instead and copy from the editor.', true);
       }
     });
 
@@ -216,18 +315,25 @@ function renderHistory(entries) {
     restoreBtn.type = 'button';
     restoreBtn.title = 'Restore to Original';
     restoreBtn.textContent = 'Restore';
-    restoreBtn.addEventListener('click', () => {
-      drafts.original = entry.content;
-      switchView('editor');
-      switchTab('original');
-      setStatus('Restored a version from ' + relativeTime(entry.ts) + ' — Save to keep it.');
-    });
+    restoreBtn.addEventListener('click', () => restoreEntry(entry));
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn-text-only history-delete';
+    deleteBtn.type = 'button';
+    deleteBtn.title = 'Delete this snapshot';
+    deleteBtn.textContent = 'Delete';
+    if (!entry.id) {
+      // Pre-id snapshot from an older server — no safe way to target just this one.
+      deleteBtn.disabled = true;
+      deleteBtn.title = 'This older snapshot cannot be deleted individually';
+    }
+    deleteBtn.addEventListener('click', () => deleteEntry(entry, deleteBtn));
 
     const chars = document.createElement('span');
     chars.className = 'history-chars';
     chars.textContent = entry.content.length + ' chars';
 
-    actions.append(copyBtn, restoreBtn);
+    actions.append(copyBtn, restoreBtn, deleteBtn);
     right.append(actions, chars);
     meta.append(time, right);
 
@@ -248,6 +354,54 @@ async function loadHistory() {
   } catch (e) {
     historyEmpty.hidden = false;
     historyEmpty.textContent = 'Failed to load history: ' + e.message;
+  }
+}
+
+function restoreEntry(entry) {
+  const split = splitSavedBoth(entry.content);
+  const incoming = split ? split.original : entry.content;
+  const currentOriginal = activeTab === 'original' ? editor.value : drafts.original;
+  if (currentOriginal.trim() && currentOriginal.trim() !== incoming.trim()
+      && !window.confirm('Restore replaces the current Original draft.\n\nOK — replace it.\nCancel — keep what you have.')) {
+    return;
+  }
+
+  switchView('editor');
+  switchTab('original'); // stash the outgoing buffer first, then write the restored text
+  setDraft('original', incoming);
+
+  if (split && split.enhanced) {
+    setEnhanced(split.enhanced, incoming); // both halves came from the same snapshot, so they match
+    setStatus('Restored both versions from ' + relativeTime(entry.ts) + ' — Save to keep them.');
+    return;
+  }
+
+  if (drafts.enhanced.trim()) {
+    // The kept Enhanced draft came from a different Original — flag it rather
+    // than silently deleting the user's work or silently pairing a mismatch.
+    enhancedSource = null;
+    staleAcknowledged = false;
+    setStale(true);
+    setStatus('Restored a version from ' + relativeTime(entry.ts) + ' — the existing Enhanced draft no longer matches it.');
+    return;
+  }
+  setStatus('Restored a version from ' + relativeTime(entry.ts) + ' — Save to keep it.');
+}
+
+async function deleteEntry(entry, btn) {
+  if (!entry.id || btn.disabled) return;
+  if (!window.confirm('Delete this snapshot from History? This cannot be undone.')) return;
+  btn.disabled = true;
+  try {
+    const d = await safeFetchJson('/history/delete', {
+      method: 'POST',
+      body: JSON.stringify({ id: entry.id, cwd }),
+    });
+    renderHistory(d.entries || []); // server returns the surviving list, so no second round trip
+    setStatus(d.removed ? 'Deleted one snapshot from History.' : 'That snapshot was already gone.');
+  } catch (e) {
+    btn.disabled = false;
+    setStatus('Delete failed: ' + e.message, true);
   }
 }
 
@@ -342,8 +496,12 @@ async function safeFetchJson(url, opts) {
 (async function init() {
   try {
     const d = await safeFetchJson('/load?cwd=' + encodeURIComponent(cwd));
-    drafts.original = d.content || '';
+    const saved = d.content || '';
+    lastSaved = saved.trim() ? saved : null;
+    const split = splitSavedBoth(saved);
+    drafts.original = split ? split.original : saved;
     editor.value = drafts.original;
+    if (split && split.enhanced) setEnhanced(split.enhanced, drafts.original);
   } catch (e) {
     showBanner('Failed to load saved prompt: ' + e.message);
   }
@@ -371,17 +529,41 @@ async function safeFetchJson(url, opts) {
 editor.addEventListener('input', () => {
   drafts[activeTab] = editor.value;
   updateCharcount();
+  if (activeTab === 'original' && drafts.enhanced.trim()) {
+    // Editing back to the exact text Enhance ran on clears the warning again.
+    setStale(enhancedSource === null || editor.value.trim() !== enhancedSource.trim());
+  }
+  if (activeTab === 'enhanced' && !editor.value.trim()) {
+    saveBothCheckbox.checked = false; // hand-emptied Enhanced: nothing to pair with
+    saveBothCheckbox.disabled = true;
+    setStale(false);
+  } else if (activeTab === 'enhanced') {
+    saveBothCheckbox.disabled = !drafts.original.trim();
+  }
 });
 
-const lockable = [editor, useContext, cliSelect, modelSelect, saveBtn, saveBothCheckbox, enhanceBtn, tabOriginal, tabEnhanced, viewEditorBtn, viewHistoryBtn];
+discardEnhancedBtn.addEventListener('click', () => {
+  clearEnhanced();
+  setStatus('Deleted the Enhanced draft. Only Original will be saved.');
+});
+
+keepEnhancedBtn.addEventListener('click', () => {
+  staleAcknowledged = true;
+  staleNotice.hidden = true;
+  setStatus('Keeping the Enhanced draft as-is.');
+});
+
+const lockable = [editor, useContext, cliSelect, modelSelect, saveBtn, saveBothCheckbox, enhanceBtn, tabOriginal, tabEnhanced, viewEditorBtn, viewHistoryBtn, discardEnhancedBtn, keepEnhancedBtn];
 function setBusy(busy) {
   document.body.classList.toggle('busy', busy);
   for (const el of lockable) el.disabled = busy;
   if (!busy) {
-    const hasEnhanced = !!drafts.enhanced;
-    tabEnhanced.disabled = !hasEnhanced; // keep disabled until something exists
-    saveBothCheckbox.disabled = !hasEnhanced;
-    if (!hasEnhanced) saveBothCheckbox.checked = false;
+    const hasEnhanced = !!drafts.enhanced.trim();
+    // Never disable the tab you're standing on — that strands you on a dead tab
+    // with no way back to what you typed.
+    tabEnhanced.disabled = !hasEnhanced && activeTab !== 'enhanced';
+    saveBothCheckbox.disabled = !hasEnhanced || !drafts.original.trim();
+    if (saveBothCheckbox.disabled) saveBothCheckbox.checked = false;
     applyCliAvailability();
   }
 }
@@ -389,19 +571,57 @@ function setBusy(busy) {
 // Combines both drafts into one file when "Save both versions" is checked,
 // so a single saved file gives the agent Original and Enhanced together.
 function contentToSave() {
+  drafts[activeTab] = editor.value; // keystrokes land here anyway; belt-and-braces before reading both drafts
   const saveBoth = saveBothCheckbox.checked && !saveBothCheckbox.disabled;
-  if (!saveBoth) return { content: editor.value, label: activeTab };
-  const content = ['## Original', '', drafts.original.trim(), '', '## Enhanced', '', drafts.enhanced.trim()].join('\n');
+  if (!saveBoth) return { content: drafts[activeTab], label: activeTab };
+  const original = drafts.original.trim();
+  const enhanced = drafts.enhanced.trim();
+  // One side empty: write the non-empty side alone rather than a file with a
+  // headed but blank section, which the agent would read as a real half.
+  if (!original || !enhanced) {
+    const only = enhanced || original;
+    return { content: only, label: enhanced ? 'enhanced' : 'original' };
+  }
+  // Enhance returned (or was edited back to) the same text: two identical
+  // halves are noise, and the agent would read the same prompt twice.
+  if (original === enhanced) return { content: enhanced, label: 'both versions (identical — stored once)' };
+  const content = ['## Original', '', original, '', '## Enhanced', '', enhanced].join('\n');
   return { content, label: 'both versions' };
 }
 
+// A stale Enhanced draft is the one thing Save must not silently act on: the
+// user either wants it gone or knowingly kept.
+function confirmStaleBeforeSave() {
+  if (!enhancedStale || staleAcknowledged) return true;
+  const savingBoth = saveBothCheckbox.checked && !saveBothCheckbox.disabled;
+  if (savingBoth) {
+    if (!window.confirm('The Enhanced draft was generated from an earlier version of Original.\n\nOK — save both anyway.\nCancel — stop, so you can re-run Enhance first.')) return false;
+    staleAcknowledged = true;
+    staleNotice.hidden = true;
+    return true;
+  }
+  // Saving the Enhanced tab itself is an explicit choice of that text — no ask.
+  if (activeTab === 'enhanced') return true;
+  if (window.confirm('You edited Original after enhancing it, so the Enhanced draft is stale.\n\nOK — delete the Enhanced draft, then save.\nCancel — keep it and save anyway.')) {
+    clearEnhanced();
+  } else {
+    staleAcknowledged = true;
+    staleNotice.hidden = true;
+  }
+  return true;
+}
+
 async function doSave() {
+  if (!confirmStaleBeforeSave()) { setStatus('Save cancelled — re-run Enhance, then save.'); return; }
   const { content, label } = contentToSave();
   if (!content.trim()) { setStatus('Nothing to save — prompt is empty.', true); editor.focus(); return; }
+  // Re-saving byte-identical content only adds a duplicate History snapshot.
+  if (content === lastSaved) { setStatus('Already saved — nothing changed since the last save.'); return; }
   setBusy(true);
   setStatus('Saving ' + label + '...');
   try {
     await safeFetchJson('/save', { method: 'POST', body: JSON.stringify({ content, cwd }) });
+    lastSaved = content;
     setStatus('Saved ' + label + ' to the vault. Go back to your agent and tell it to use the prompt.');
     historyLoaded = false; // next History visit re-fetches so the new save shows up
   } catch (e) {
@@ -414,6 +634,11 @@ async function doSave() {
 async function doEnhance() {
   const content = editor.value;
   if (!content.trim()) { setStatus('Nothing to enhance — write a prompt first.', true); editor.focus(); return; }
+  // Re-enhancing from the Enhanced tab overwrites the only copy of that text.
+  if (activeTab === 'enhanced'
+      && !window.confirm('Enhance replaces the current Enhanced draft with a new pass over it.\n\nOK — replace it.\nCancel — keep it.')) {
+    return;
+  }
   const cli = cliSelect.value;
   setBusy(true);
   setStatus('Enhancing with ' + cli + '...');
@@ -427,10 +652,9 @@ async function doEnhance() {
         context: { include: useContext.checked, ...session },
       }),
     });
-    drafts.enhanced = d.content || content;
-    tabEnhanced.disabled = false;
-    saveBothCheckbox.disabled = false;
-    enhancedDot.hidden = false;
+    // Source is the text actually sent, so a later edit of Original is what
+    // marks Enhanced stale — even when Enhance was run from the Enhanced tab.
+    setEnhanced(d.content || content, activeTab === 'original' ? content : drafts.original);
     switchTab('enhanced');
     setStatus('Enhanced. Compare the Original and Enhanced tabs, then Save the one you want.');
   } catch (e) {
