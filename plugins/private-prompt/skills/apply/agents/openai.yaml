@@ -1,4 +1,0 @@
-interface:
-  display_name: "Apply Saved Prompt"
-  short_description: "Read and execute the latest saved private prompt"
-  default_prompt: "Use $apply to implement my latest saved private prompt."

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Prompt Vault</title>
+    <script>
+      // shadcn's dark tokens hang off a `.dark` class. There is no theme
+      // switcher here, so mirror the OS preference onto <html> before first
+      // paint to avoid a flash of the wrong theme.
+      (function () {
+        var query = window.matchMedia("(prefers-color-scheme: dark)");
+        var apply = function (dark) {
+          document.documentElement.classList.toggle("dark", dark);
+        };
+        apply(query.matches);
+        query.addEventListener("change", function (event) {
+          apply(event.matches);
+        });
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

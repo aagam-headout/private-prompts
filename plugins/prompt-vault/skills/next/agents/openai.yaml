@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run Next Queued Prompt"
+  short_description: "Claim the next prompt from the vault queue and carry it out"
+  default_prompt: "Use $next to run my next queued prompt."

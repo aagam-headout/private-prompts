@@ -1,14 +1,14 @@
 {
-  "name": "private-prompt",
+  "name": "prompt-vault",
   "interface": {
-    "displayName": "Private Prompt Vault"
+    "displayName": "Prompt Vault"
   },
   "plugins": [
     {
-      "name": "private-prompt",
+      "name": "prompt-vault",
       "source": {
         "source": "local",
-        "path": "./plugins/private-prompt"
+        "path": "./plugins/prompt-vault"
       },
       "policy": {
         "installation": "AVAILABLE",

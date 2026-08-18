@@ -1,0 +1,16 @@
+{
+  "name": "prompt-vault",
+  "description": "Queue prompts in a local browser page, outside any repo's telemetry — Claude claims them one at a time, carries them out, and marks each done.",
+  "version": "2.0.0",
+  "author": {
+    "name": "aagam-headout"
+  },
+  "license": "MIT",
+  "keywords": [
+    "privacy",
+    "prompts",
+    "queue",
+    "local-first",
+    "productivity"
+  ]
+}

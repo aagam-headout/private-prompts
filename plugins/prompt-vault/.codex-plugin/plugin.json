@@ -1,0 +1,31 @@
+{
+  "name": "prompt-vault",
+  "description": "Queue prompts in a local browser page, then let Codex claim them one at a time, carry them out, and mark each done.",
+  "version": "2.0.0",
+  "author": {
+    "name": "aagam-headout"
+  },
+  "license": "MIT",
+  "keywords": [
+    "privacy",
+    "prompts",
+    "queue",
+    "local-first",
+    "productivity"
+  ],
+  "homepage": "https://github.com/aagam-headout/prompt-vault",
+  "repository": "https://github.com/aagam-headout/prompt-vault",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Prompt Vault",
+    "shortDescription": "Queue prompts outside the chat transcript",
+    "longDescription": "Write prompts into a local browser queue stored outside the repository. Codex claims them one at a time, carries each out, and marks it done — so the prompt text never has to be pasted into chat.",
+    "developerName": "aagam-headout",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "websiteURL": "https://github.com/aagam-headout/prompt-vault",
+    "defaultPrompt": ["Open Prompt Vault so I can queue some prompts"],
+    "brandColor": "#0070F3",
+    "screenshots": []
+  }
+}
