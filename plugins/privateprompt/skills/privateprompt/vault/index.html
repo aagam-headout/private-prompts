@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Private Prompt Vault</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main class="shell">
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="brand-line">
+        <span class="lockicon">&#9679;</span>
+        <h1>Private Prompt Vault</h1>
+      </div>
+      <div id="badges" class="badges" aria-live="polite"></div>
+    </div>
+    <p class="hint">Prompts stay on this machine. Only <strong>Enhance</strong> leaves it — a single call to your own configured CLI, never this chat.</p>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <div class="view-switch" role="tablist" aria-label="View">
+    <button id="view-editor" class="view-tab is-active" role="tab" aria-selected="true" type="button">Editor</button>
+    <button id="view-history" class="view-tab" role="tab" aria-selected="false" type="button">History</button>
+  </div>
+
+  <div id="editorView">
+    <section class="panel">
+      <div class="panel-head">
+        <div class="tabs" role="tablist" aria-label="Prompt version">
+          <button id="tab-original" class="tab is-active" role="tab" aria-selected="true" type="button">
+            Original
+          </button>
+          <button id="tab-enhanced" class="tab" role="tab" aria-selected="false" type="button" disabled>
+            Enhanced <span id="enhancedDot" class="dot" hidden></span>
+          </button>
+        </div>
+        <span id="charcount" class="charcount">0 chars</span>
+      </div>
+
+      <textarea id="editor" rows="16" placeholder="Write your prompt here..." spellcheck="true"></textarea>
+    </section>
+
+    <section class="panel panel-secondary">
+      <div class="panel-label">Enhance</div>
+      <p class="section-copy">Sends the tab you're viewing to your configured CLI and puts the result in a new Enhanced tab — your Original is never overwritten.</p>
+      <div class="enhance-row">
+        <label class="ctx-toggle">
+          <input type="checkbox" id="useContext" checked>
+          Include project context (repo, branch)
+        </label>
+        <label class="model-picker">
+          <span class="field-label">Model</span>
+          <select id="modelSelect">
+            <option value="default" selected>configured default</option>
+          </select>
+        </label>
+        <button id="enhance" class="btn btn-outline" type="button">
+          <span class="btn-icon">&#10022;</span> Enhance
+        </button>
+      </div>
+    </section>
+
+    <section class="panel panel-secondary">
+      <div class="panel-label">Save</div>
+      <div class="save-row">
+        <p class="section-copy">Stores whichever tab is open right now as this project's prompt, and adds it to History.</p>
+        <button id="save" class="btn btn-primary" type="button">Save <span class="kbd">&#8984;S</span></button>
+      </div>
+    </section>
+  </div>
+
+  <section id="historyView" class="panel" hidden>
+    <div class="panel-head panel-head-simple">
+      <span class="panel-head-title">Saved versions</span>
+    </div>
+    <div class="history-panel">
+      <div id="historyEmpty" class="history-empty" hidden>No saved versions yet — Save creates the first one.</div>
+      <ul id="historyList" class="history-list"></ul>
+    </div>
+  </section>
+
+  <div id="status" role="status" aria-live="polite"></div>
+</main>
+
+<script>
+'use strict';
+
+const editor = document.getElementById('editor');
+const status = document.getElementById('status');
+const banner = document.getElementById('banner');
+const badges = document.getElementById('badges');
+const useContext = document.getElementById('useContext');
+const modelSelect = document.getElementById('modelSelect');
+const charcount = document.getElementById('charcount');
+const saveBtn = document.getElementById('save');
+const enhanceBtn = document.getElementById('enhance');
+const tabOriginal = document.getElementById('tab-original');
+const tabEnhanced = document.getElementById('tab-enhanced');
+const enhancedDot = document.getElementById('enhancedDot');
+const viewEditorBtn = document.getElementById('view-editor');
+const viewHistoryBtn = document.getElementById('view-history');
+const editorView = document.getElementById('editorView');
+const historyView = document.getElementById('historyView');
+const historyList = document.getElementById('historyList');
+const historyEmpty = document.getElementById('historyEmpty');
+
+const cwd = new URLSearchParams(location.search).get('cwd') || '';
+let session = { model: null, repo: null, branch: null, runtime: 'codex', cliAvailable: true };
+let historyLoaded = false;
+
+// Two independent drafts: what you wrote, and what Enhance produced from it.
+// Switching tabs swaps the textarea's bound buffer; typing edits whichever is active.
+const drafts = { original: '', enhanced: '' };
+let activeTab = 'original';
+
+function setStatus(msg, isError) {
+  status.textContent = msg || '';
+  status.className = isError ? 'error' : 'ok';
+}
+
+function showBanner(msg) {
+  banner.textContent = msg;
+  banner.hidden = !msg;
+}
+
+function badge(label, value) {
+  const el = document.createElement('span');
+  el.className = 'badge';
+  const l = document.createElement('span');
+  l.className = 'badge-label';
+  l.textContent = label; // textContent, not innerHTML — never trust repo/branch names
+  el.appendChild(l);
+  el.appendChild(document.createTextNode(value));
+  return el;
+}
+
+function renderBadges() {
+  badges.innerHTML = '';
+  if (session.model) badges.appendChild(badge('session', session.model));
+  if (session.repo) badges.appendChild(badge('repo', session.repo));
+  if (session.branch) badges.appendChild(badge('branch', session.branch));
+}
+
+function updateCharcount() {
+  charcount.textContent = editor.value.length + ' chars';
+}
+
+function relativeTime(ts) {
+  const diffSec = Math.round((Date.now() - ts) / 1000);
+  if (diffSec < 5) return 'just now';
+  if (diffSec < 60) return diffSec + 's ago';
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return diffMin + 'm ago';
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return diffHr + 'h ago';
+  return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function renderHistory(entries) {
+  historyList.innerHTML = '';
+  historyEmpty.hidden = entries.length > 0;
+  for (const entry of entries) {
+    const li = document.createElement('li');
+    li.className = 'history-item';
+
+    const meta = document.createElement('div');
+    meta.className = 'history-meta';
+    const time = document.createElement('span');
+    time.className = 'history-time';
+    time.textContent = relativeTime(entry.ts);
+    const chars = document.createElement('span');
+    chars.className = 'history-chars';
+    chars.textContent = entry.content.length + ' chars';
+    meta.append(time, chars);
+
+    const preview = document.createElement('div');
+    preview.className = 'history-preview';
+    preview.textContent = entry.content.slice(0, 160).replace(/\s+/g, ' ');
+
+    const restoreBtn = document.createElement('button');
+    restoreBtn.className = 'btn btn-ghost history-restore';
+    restoreBtn.type = 'button';
+    restoreBtn.textContent = 'Restore to Original';
+    restoreBtn.addEventListener('click', () => {
+      drafts.original = entry.content;
+      switchView('editor');
+      switchTab('original');
+      setStatus('Restored a version from ' + relativeTime(entry.ts) + ' — Save to keep it.');
+    });
+
+    li.append(meta, preview, restoreBtn);
+    historyList.appendChild(li);
+  }
+}
+
+async function loadHistory() {
+  try {
+    const d = await safeFetchJson('/history?cwd=' + encodeURIComponent(cwd));
+    renderHistory(d.entries || []);
+    historyLoaded = true;
+  } catch (e) {
+    historyEmpty.hidden = false;
+    historyEmpty.textContent = 'Failed to load history: ' + e.message;
+  }
+}
+
+// Editor vs. History are separate views, not tabs of the same panel —
+// History is a read-only log, not another draft to type into.
+function switchView(name) {
+  const isHistory = name === 'history';
+  editorView.hidden = isHistory;
+  historyView.hidden = !isHistory;
+  viewEditorBtn.classList.toggle('is-active', !isHistory);
+  viewEditorBtn.setAttribute('aria-selected', String(!isHistory));
+  viewHistoryBtn.classList.toggle('is-active', isHistory);
+  viewHistoryBtn.setAttribute('aria-selected', String(isHistory));
+  if (isHistory && !historyLoaded) loadHistory();
+}
+
+viewEditorBtn.addEventListener('click', () => switchView('editor'));
+viewHistoryBtn.addEventListener('click', () => switchView('history'));
+
+// Original vs. Enhanced are the two drafts within the Editor view.
+function switchTab(name) {
+  drafts[activeTab] = editor.value; // stash current buffer before swapping
+  activeTab = name;
+  editor.value = drafts[name];
+  updateCharcount();
+  const isOriginal = name === 'original';
+  tabOriginal.classList.toggle('is-active', isOriginal);
+  tabOriginal.setAttribute('aria-selected', String(isOriginal));
+  tabEnhanced.classList.toggle('is-active', !isOriginal);
+  tabEnhanced.setAttribute('aria-selected', String(!isOriginal));
+}
+
+tabOriginal.addEventListener('click', () => switchTab('original'));
+tabEnhanced.addEventListener('click', () => { if (!tabEnhanced.disabled) switchTab('enhanced'); });
+
+function applyCliAvailability() {
+  if (session.cliAvailable === false) {
+    enhanceBtn.disabled = true;
+    const cli = session.runtime === 'claude' ? 'claude' : 'codex';
+    enhanceBtn.title = cli + ' CLI not found in PATH';
+    showBanner(cli + ' CLI not found in PATH — Enhance is disabled. Save still works.');
+  }
+}
+
+async function safeFetchJson(url, opts) {
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch {
+    throw new Error('cannot reach local server — is it still running?');
+  }
+  let data = {};
+  try {
+    data = await res.json();
+  } catch {
+    // non-JSON response body; fall through with empty object
+  }
+  if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
+  return data;
+}
+
+(async function init() {
+  try {
+    const d = await safeFetchJson('/load?cwd=' + encodeURIComponent(cwd));
+    drafts.original = d.content || '';
+    editor.value = drafts.original;
+  } catch (e) {
+    showBanner('Failed to load saved prompt: ' + e.message);
+  }
+  updateCharcount();
+
+  try {
+    session = await safeFetchJson('/session?cwd=' + encodeURIComponent(cwd));
+    renderBadges();
+    applyCliAvailability();
+  } catch (e) {
+    showBanner('Failed to load session info: ' + e.message);
+  }
+
+  try {
+    const d = await safeFetchJson('/models');
+    const ids = d.models || {};
+    for (const opt of modelSelect.options) {
+      if (ids[opt.value]) opt.textContent = ids[opt.value];
+    }
+  } catch {
+    // dropdown keeps its static fallback label — not fatal
+  }
+})();
+
+editor.addEventListener('input', () => {
+  drafts[activeTab] = editor.value;
+  updateCharcount();
+});
+
+const lockable = [editor, useContext, modelSelect, saveBtn, enhanceBtn, tabOriginal, tabEnhanced, viewEditorBtn, viewHistoryBtn];
+function setBusy(busy) {
+  document.body.classList.toggle('busy', busy);
+  for (const el of lockable) el.disabled = busy;
+  if (!busy) {
+    if (!drafts.enhanced) tabEnhanced.disabled = true; // keep disabled until something exists
+    applyCliAvailability();
+  }
+}
+
+async function doSave() {
+  const content = editor.value;
+  if (!content.trim()) { setStatus('Nothing to save — prompt is empty.', true); editor.focus(); return; }
+  setBusy(true);
+  setStatus('Saving ' + activeTab + '...');
+  try {
+    await safeFetchJson('/save', { method: 'POST', body: JSON.stringify({ content, cwd }) });
+    setStatus('Saved ' + activeTab + ' to the vault.');
+    historyLoaded = false; // next History visit re-fetches so the new save shows up
+  } catch (e) {
+    setStatus('Save failed: ' + e.message, true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function doEnhance() {
+  const content = editor.value;
+  if (!content.trim()) { setStatus('Nothing to enhance — write a prompt first.', true); editor.focus(); return; }
+  setBusy(true);
+  setStatus('Enhancing with the configured model...');
+  try {
+    const d = await safeFetchJson('/enhance', {
+      method: 'POST',
+      body: JSON.stringify({
+        content,
+        model: modelSelect.value,
+        context: { include: useContext.checked, ...session },
+      }),
+    });
+    drafts.enhanced = d.content || content;
+    tabEnhanced.disabled = false;
+    enhancedDot.hidden = false;
+    switchTab('enhanced');
+    setStatus('Enhanced. Compare the Original and Enhanced tabs, then Save the one you want.');
+  } catch (e) {
+    setStatus('Enhance failed: ' + e.message, true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+saveBtn.addEventListener('click', doSave);
+enhanceBtn.addEventListener('click', doEnhance);
+
+// Cmd/Ctrl+S saves instead of triggering the browser's save-page dialog.
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+    e.preventDefault();
+    if (!saveBtn.disabled) doSave();
+  }
+});
+</script>
+</body>
+</html>

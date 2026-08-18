@@ -1,0 +1,20 @@
+{
+  "name": "privateprompt",
+  "interface": {
+    "displayName": "Private Prompt Vault"
+  },
+  "plugins": [
+    {
+      "name": "privateprompt",
+      "source": {
+        "source": "local",
+        "path": "./plugins/privateprompt"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
