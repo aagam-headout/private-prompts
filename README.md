@@ -6,50 +6,41 @@ as reference — the prompt itself never has to appear in the chat transcript.
 
 ## Plugins and skills, briefly
 
-If these terms are new: a **plugin** is an installable bundle an agent CLI
-(Codex, Claude Code, Cursor) loads — it can add slash commands, background
-servers, or files the agent knows how to use. A **skill** is one instruction
-set inside that bundle: a markdown file (`SKILL.md`) telling the agent *when*
-to act (its trigger, e.g. "user runs `/privateprompt`") and *what steps to run*
-when it does. This repo ships one plugin, `privateprompt`, with two skills:
+This **plugin** is an installable bundle an agent CLI loads (slash commands,
+background servers, files the agent can use). A **skill** is one instruction
+file inside it (`SKILL.md`) telling the agent when to act and what steps to
+run. This repo's `privateprompt` plugin ships two skills, each its own slash
+command:
 
-- **`privateprompt`** — opens the vault page so you can draft, optionally
-  enhance, and save a prompt.
-- **`privateprompt-apply`** — reads the current project's latest saved prompt
-  and carries it out immediately, no re-confirmation needed.
-
-Each skill runs as a slash command (`/privateprompt`, `/privateprompt-apply`)
-in whichever agent CLI has the plugin installed.
+- **`/privateprompt`** — open the vault page to draft, optionally enhance,
+  and save a prompt.
+- **`/privateprompt-apply`** — read the current project's latest saved
+  prompt and carry it out immediately, no re-confirmation.
 
 ## How it works
 
-1. `/privateprompt` starts a small local server (Node, loopback-only) and
-   opens it in your browser.
-2. You write or paste a prompt, optionally click **Enhance** (sends the draft
-   to a CLI/model of your choice to be improved — defaults to the current
-   runtime, but the page lets you switch to any other installed CLI and its
-   models), then **Save**. Save normally keeps whichever tab is open; check
-   **Save both versions** to write Original and Enhanced into one file.
-3. The agent reads the saved file directly from disk as reference context —
-   you never have to paste it into the chat. **What gets acted on:** if the
-   file holds both versions, the agent treats Enhanced as the actual task and
-   Original as background only; a single-version save is used as-is.
-4. `/privateprompt-apply` skips step 3's confirmation: it reads the latest
-   saved prompt for the current project and executes it right away, applying
-   the same Enhanced-over-Original rule.
+1. `/privateprompt` starts a local, loopback-only server and opens it in
+   your browser.
+2. Write or paste a prompt, optionally **Enhance** it (pick any installed
+   CLI/model — defaults to the current runtime), then **Save**. Save keeps
+   whichever tab is open; check **Save both versions** to keep Original and
+   Enhanced together in one file.
+3. The agent reads that file as reference context instead of you pasting it
+   into chat. If the file holds both versions, Enhanced is the task and
+   Original is background only.
+4. `/privateprompt-apply` does step 3 without asking first.
 
-Storage is per-project (keyed by a hash of the working directory) and
+Drafts live per-project (keyed by a hash of the working directory) under a
 per-runtime home directory (`~/.codex/`, `~/.claude/`, or
-`~/.cursor/private-prompts/`), so drafts survive plugin updates and don't
-collide across projects or agents. Every save also keeps up to 50 timestamped
-history snapshots, browsable from the page's **History** tab.
+`~/.cursor/private-prompts/`), and every save keeps up to 50 timestamped
+history snapshots in the page's **History** tab.
 
 ## Install
 
 ### Codex
 
 ```bash
-codex plugin marketplace add aagam-headout/private-propmts
+codex plugin marketplace add aagam-headout/private-prompts
 codex plugin add privateprompt@privateprompt
 ```
 
@@ -63,7 +54,7 @@ codex plugin add privateprompt@privateprompt
 ### Claude Code
 
 ```text
-/plugin marketplace add aagam-headout/private-propmts
+/plugin marketplace add aagam-headout/private-prompts
 /plugin install privateprompt
 ```
 

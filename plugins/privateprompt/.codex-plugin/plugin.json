@@ -13,8 +13,8 @@
     "telemetry",
     "productivity"
   ],
-  "homepage": "https://github.com/aagam-headout/private-propmts",
-  "repository": "https://github.com/aagam-headout/private-propmts",
+  "homepage": "https://github.com/aagam-headout/private-prompts",
+  "repository": "https://github.com/aagam-headout/private-prompts",
   "skills": "./skills/",
   "interface": {
     "displayName": "Private Prompt Vault",
@@ -23,7 +23,7 @@
     "developerName": "aagam-headout",
     "category": "Productivity",
     "capabilities": ["Interactive", "Read", "Write"],
-    "websiteURL": "https://github.com/aagam-headout/private-propmts",
+    "websiteURL": "https://github.com/aagam-headout/private-prompts",
     "defaultPrompt": ["Open Private Prompt Vault so I can draft a prompt outside this chat"],
     "brandColor": "#0070F3",
     "screenshots": []
