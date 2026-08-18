@@ -4,13 +4,7 @@ A plugin for Codex, Claude Code, and Cursor. Draft a prompt in a local browser
 page, save it outside your repository, then let your agent read the saved file
 as reference — the prompt itself never has to appear in the chat transcript.
 
-## Plugins and skills, briefly
-
-This **plugin** is an installable bundle an agent CLI loads (slash commands,
-background servers, files the agent can use). A **skill** is one instruction
-file inside it (`SKILL.md`) telling the agent when to act and what steps to
-run. This repo's `privateprompt` plugin ships two skills, each its own slash
-command:
+## Commands
 
 - **`/privateprompt`** — open the vault page to draft, optionally enhance,
   and save a prompt.
@@ -60,8 +54,10 @@ codex plugin add privateprompt@privateprompt
 
 ### Cursor
 
-Install from the GitHub marketplace source in **Cursor Settings → Plugins**, or
-submit the repo at [cursor.com/marketplace/publish](https://cursor.com/marketplace/publish).
+1. Open **Cursor Settings**, search plugins section.
+2. Browse marketplace, add marketplace, add this repo
+   (`aagam-headout/private-prompts`).
+3. Plugin shows up there — add it. Applies to your Cursor.
 
 The repo ships `.cursor-plugin/marketplace.json` at the root and
 `plugins/privateprompt/.cursor-plugin/plugin.json` for the plugin bundle.
