@@ -1,0 +1,16 @@
+{
+  "name": "privateprompt",
+  "owner": {
+    "name": "aagam-headout"
+  },
+  "metadata": {
+    "description": "Local browser prompt vault for drafting outside the repository working tree."
+  },
+  "plugins": [
+    {
+      "name": "privateprompt",
+      "source": "./plugins/privateprompt",
+      "description": "Draft prompts in a local browser vault, outside the current repository's working tree."
+    }
+  ]
+}

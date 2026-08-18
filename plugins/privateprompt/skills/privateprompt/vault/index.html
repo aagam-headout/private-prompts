@@ -16,7 +16,7 @@
       </div>
       <div id="badges" class="badges" aria-live="polite"></div>
     </div>
-    <p class="hint">Prompts stay on this machine. Only <strong>Enhance</strong> leaves it — a single call to your own configured CLI, never this chat.</p>
+    <p class="hint">Saving stays on this machine. <strong>Enhance</strong> sends the open draft through your configured CLI; asking your agent to read a saved draft also supplies it as reference.</p>
   </header>
 
   <div id="banner" class="banner" hidden></div>
@@ -44,19 +44,29 @@
     </section>
 
     <section class="panel panel-secondary">
-      <div class="panel-label">Enhance</div>
-      <p class="section-copy">Sends the tab you're viewing to your configured CLI and puts the result in a new Enhanced tab — your Original is never overwritten.</p>
+      <div class="panel-label">Enhance Prompt</div>
+      <p class="section-copy">Sends the tab you're viewing to the selected CLI and puts the result in a new Enhanced tab — your Original is never overwritten. Defaults to the agent you launched this from; switch it to send Enhance to a different installed CLI instead.</p>
       <div class="enhance-row">
-        <label class="ctx-toggle">
-          <input type="checkbox" id="useContext" checked>
-          Include project context (repo, branch)
-        </label>
-        <label class="model-picker">
-          <span class="field-label">Model</span>
-          <select id="modelSelect">
-            <option value="default" selected>configured default</option>
-          </select>
-        </label>
+        <div class="enhance-controls">
+          <label class="model-picker">
+            <span class="field-label">CLI</span>
+            <select id="cliSelect">
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+              <option value="cursor">Cursor</option>
+            </select>
+          </label>
+          <label class="model-picker">
+            <span class="field-label">Model</span>
+            <select id="modelSelect">
+              <option value="default" selected>configured default</option>
+            </select>
+          </label>
+          <label class="ctx-toggle">
+            <input type="checkbox" id="useContext" checked>
+            Include project context (repo, branch)
+          </label>
+        </div>
         <button id="enhance" class="btn btn-outline" type="button">
           <span class="btn-icon">&#10022;</span> Enhance
         </button>
@@ -64,10 +74,14 @@
     </section>
 
     <section class="panel panel-secondary">
-      <div class="panel-label">Save</div>
+      <div class="panel-label">Save Prompt</div>
       <div class="save-row">
-        <p class="section-copy">Stores whichever tab is open right now as this project's prompt, and adds it to History.</p>
-        <button id="save" class="btn btn-primary" type="button">Save <span class="kbd">&#8984;S</span></button>
+        <p class="section-copy">Stores whichever tab is open right now as this project's prompt, and adds it to History. Check the box to save both versions in one file instead — the agent then sees Original as background and acts on Enhanced.</p>
+        <label class="ctx-toggle">
+          <input type="checkbox" id="saveBoth" disabled>
+          Save both versions (Original + Enhanced)
+        </label>
+        <button id="save" class="btn btn-primary" type="button">Save for Agent <span class="kbd">&#8984;S</span></button>
       </div>
     </section>
   </div>
@@ -93,9 +107,11 @@ const status = document.getElementById('status');
 const banner = document.getElementById('banner');
 const badges = document.getElementById('badges');
 const useContext = document.getElementById('useContext');
+const cliSelect = document.getElementById('cliSelect');
 const modelSelect = document.getElementById('modelSelect');
 const charcount = document.getElementById('charcount');
 const saveBtn = document.getElementById('save');
+const saveBothCheckbox = document.getElementById('saveBoth');
 const enhanceBtn = document.getElementById('enhance');
 const tabOriginal = document.getElementById('tab-original');
 const tabEnhanced = document.getElementById('tab-enhanced');
@@ -108,8 +124,10 @@ const historyList = document.getElementById('historyList');
 const historyEmpty = document.getElementById('historyEmpty');
 
 const cwd = new URLSearchParams(location.search).get('cwd') || '';
-let session = { model: null, repo: null, branch: null, runtime: 'codex', cliAvailable: true };
+let session = { model: null, repo: null, branch: null, runtime: 'codex', cliAvailable: true, cliAvailability: {} };
 let historyLoaded = false;
+let modelsByCli = {};
+let defaultModelByCli = {};
 
 // Two independent drafts: what you wrote, and what Enhance produced from it.
 // Switching tabs swaps the textarea's bound buffer; typing edits whichever is active.
@@ -255,6 +273,7 @@ function switchTab(name) {
   activeTab = name;
   editor.value = drafts[name];
   updateCharcount();
+  setStatus(''); // stale status (e.g. "Nothing to save") shouldn't follow you across tabs
   const isOriginal = name === 'original';
   tabOriginal.classList.toggle('is-active', isOriginal);
   tabOriginal.setAttribute('aria-selected', String(isOriginal));
@@ -265,14 +284,43 @@ function switchTab(name) {
 tabOriginal.addEventListener('click', () => switchTab('original'));
 tabEnhanced.addEventListener('click', () => { if (!tabEnhanced.disabled) switchTab('enhanced'); });
 
+const CLI_BINARIES = { claude: 'claude', codex: 'codex', cursor: 'agent' };
+
+// Enhance's disabled state tracks whichever CLI is selected in the picker,
+// not just the runtime this page was launched from.
 function applyCliAvailability() {
-  if (session.cliAvailable === false) {
-    enhanceBtn.disabled = true;
-    const cli = session.runtime === 'claude' ? 'claude' : 'codex';
-    enhanceBtn.title = cli + ' CLI not found in PATH';
-    showBanner(cli + ' CLI not found in PATH — Enhance is disabled. Save still works.');
+  const cli = cliSelect.value;
+  const available = session.cliAvailability ? session.cliAvailability[cli] !== false
+    : (cli === session.runtime ? session.cliAvailable !== false : true);
+  enhanceBtn.disabled = !available;
+  const bin = CLI_BINARIES[cli] || cli;
+  if (!available) {
+    enhanceBtn.title = bin + ' CLI not found in PATH';
+    showBanner(bin + ' CLI not found in PATH — Enhance is disabled for this CLI. Save still works.');
+  } else {
+    enhanceBtn.title = '';
+    banner.hidden = true;
   }
 }
+
+// Rebuilds the Model dropdown for whichever CLI is selected — each CLI has
+// its own model table (Claude has aliases, Codex/Cursor just "default").
+function populateModelsFor(cli) {
+  const ids = modelsByCli[cli] || { default: 'configured default' };
+  modelSelect.innerHTML = '';
+  for (const [value, label] of Object.entries(ids)) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    modelSelect.appendChild(opt);
+  }
+  modelSelect.value = defaultModelByCli[cli] || 'default';
+}
+
+cliSelect.addEventListener('change', () => {
+  populateModelsFor(cliSelect.value);
+  applyCliAvailability();
+});
 
 async function safeFetchJson(url, opts) {
   let res;
@@ -304,20 +352,20 @@ async function safeFetchJson(url, opts) {
   try {
     session = await safeFetchJson('/session?cwd=' + encodeURIComponent(cwd));
     renderBadges();
-    applyCliAvailability();
+    cliSelect.value = session.runtime || 'codex'; // default to the agent this page was opened from
   } catch (e) {
     showBanner('Failed to load session info: ' + e.message);
   }
 
   try {
     const d = await safeFetchJson('/models');
-    const ids = d.models || {};
-    for (const opt of modelSelect.options) {
-      if (ids[opt.value]) opt.textContent = ids[opt.value];
-    }
+    modelsByCli = d.byCli || { [cliSelect.value]: d.models || {} };
+    defaultModelByCli = d.defaultByCli || { [cliSelect.value]: d.default || 'default' };
   } catch {
     // dropdown keeps its static fallback label — not fatal
   }
+  populateModelsFor(cliSelect.value);
+  applyCliAvailability();
 })();
 
 editor.addEventListener('input', () => {
@@ -325,24 +373,36 @@ editor.addEventListener('input', () => {
   updateCharcount();
 });
 
-const lockable = [editor, useContext, modelSelect, saveBtn, enhanceBtn, tabOriginal, tabEnhanced, viewEditorBtn, viewHistoryBtn];
+const lockable = [editor, useContext, cliSelect, modelSelect, saveBtn, saveBothCheckbox, enhanceBtn, tabOriginal, tabEnhanced, viewEditorBtn, viewHistoryBtn];
 function setBusy(busy) {
   document.body.classList.toggle('busy', busy);
   for (const el of lockable) el.disabled = busy;
   if (!busy) {
-    if (!drafts.enhanced) tabEnhanced.disabled = true; // keep disabled until something exists
+    const hasEnhanced = !!drafts.enhanced;
+    tabEnhanced.disabled = !hasEnhanced; // keep disabled until something exists
+    saveBothCheckbox.disabled = !hasEnhanced;
+    if (!hasEnhanced) saveBothCheckbox.checked = false;
     applyCliAvailability();
   }
 }
 
+// Combines both drafts into one file when "Save both versions" is checked,
+// so a single saved file gives the agent Original and Enhanced together.
+function contentToSave() {
+  const saveBoth = saveBothCheckbox.checked && !saveBothCheckbox.disabled;
+  if (!saveBoth) return { content: editor.value, label: activeTab };
+  const content = ['## Original', '', drafts.original.trim(), '', '## Enhanced', '', drafts.enhanced.trim()].join('\n');
+  return { content, label: 'both versions' };
+}
+
 async function doSave() {
-  const content = editor.value;
+  const { content, label } = contentToSave();
   if (!content.trim()) { setStatus('Nothing to save — prompt is empty.', true); editor.focus(); return; }
   setBusy(true);
-  setStatus('Saving ' + activeTab + '...');
+  setStatus('Saving ' + label + '...');
   try {
     await safeFetchJson('/save', { method: 'POST', body: JSON.stringify({ content, cwd }) });
-    setStatus('Saved ' + activeTab + ' to the vault. Go back to your agent and tell it to use the prompt.');
+    setStatus('Saved ' + label + ' to the vault. Go back to your agent and tell it to use the prompt.');
     historyLoaded = false; // next History visit re-fetches so the new save shows up
   } catch (e) {
     setStatus('Save failed: ' + e.message, true);
@@ -354,19 +414,22 @@ async function doSave() {
 async function doEnhance() {
   const content = editor.value;
   if (!content.trim()) { setStatus('Nothing to enhance — write a prompt first.', true); editor.focus(); return; }
+  const cli = cliSelect.value;
   setBusy(true);
-  setStatus('Enhancing with the configured model...');
+  setStatus('Enhancing with ' + cli + '...');
   try {
     const d = await safeFetchJson('/enhance', {
       method: 'POST',
       body: JSON.stringify({
         content,
+        cli,
         model: modelSelect.value,
         context: { include: useContext.checked, ...session },
       }),
     });
     drafts.enhanced = d.content || content;
     tabEnhanced.disabled = false;
+    saveBothCheckbox.disabled = false;
     enhancedDot.hidden = false;
     switchTab('enhanced');
     setStatus('Enhanced. Compare the Original and Enhanced tabs, then Save the one you want.');

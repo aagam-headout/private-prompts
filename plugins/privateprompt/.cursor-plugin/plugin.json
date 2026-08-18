@@ -2,11 +2,13 @@
   "name": "privateprompt",
   "displayName": "Private Prompt Vault",
   "description": "Draft prompts in a local browser vault, outside the current repository's working tree.",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "author": {
     "name": "aagam-headout"
   },
   "license": "MIT",
+  "homepage": "https://github.com/aagam-headout/private-propmts",
+  "repository": "https://github.com/aagam-headout/private-propmts",
   "keywords": [
     "privacy",
     "prompts",

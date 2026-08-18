@@ -83,9 +83,6 @@ body {
   font-size: 12px;
   margin: 8px 0 0;
   line-height: 1.5;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   max-width: 100%;
 }
 .hint strong { color: var(--fg); font-weight: 600; }
@@ -348,9 +345,6 @@ body {
   font-size: 12px;
   margin: 0 0 12px;
   line-height: 1.5;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   max-width: 100%;
 }
 .save-row .section-copy { margin: 0; flex: 1 1 auto; min-width: 0; }
@@ -363,6 +357,14 @@ body {
 }
 
 .enhance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.enhance-controls {
   display: flex;
   align-items: center;
   gap: 16px;

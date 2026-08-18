@@ -15,10 +15,11 @@ const crypto = require("crypto");
 const { execFile, spawn } = require("child_process");
 
 const ROOT = __dirname;
-const RUNTIME = process.env.PRIVATEPROMPT_RUNTIME === "claude" ? "claude" : "codex";
-const CLI = RUNTIME === "claude" ? "claude" : "codex";
+const RUNTIME_RAW = process.env.PRIVATEPROMPT_RUNTIME || "codex";
+const RUNTIME = RUNTIME_RAW === "claude" || RUNTIME_RAW === "cursor" ? RUNTIME_RAW : "codex";
+const HOME_DIR = RUNTIME === "claude" ? ".claude" : RUNTIME === "cursor" ? ".cursor" : ".codex";
 const DATA_DIR = process.env.PRIVATEPROMPT_DATA_DIR
-  || path.join(os.homedir(), RUNTIME === "claude" ? ".claude" : ".codex", "private-prompts");
+  || path.join(os.homedir(), HOME_DIR, "private-prompts");
 const PROMPTS_DIR = path.join(DATA_DIR, "prompts");
 const LEGACY_PROMPT_FILE = path.join(DATA_DIR, "prompt.md"); // used when no cwd given
 const LEGACY_HISTORY_FILE = path.join(DATA_DIR, "prompt.history.jsonl");
@@ -76,23 +77,34 @@ function readBody(req) {
   });
 }
 
-const MODEL_IDS = RUNTIME === "claude"
-  ? {
-      haiku: "claude-haiku-4-5-20251001",
-      sonnet: "claude-sonnet-5",
-      opus: "claude-opus-5",
-      default: "Claude CLI default",
-    }
-  : { default: "configured Codex model" };
-const DEFAULT_ENHANCE_MODEL = RUNTIME === "claude" ? "haiku" : "default";
+// Enhance can target any installed agent CLI, not just the one that started
+// this server — the picker in the page defaults to the current runtime but
+// lets the user switch. Keep a model table and a binary name per CLI.
+const CLI_BIN = { claude: "claude", codex: "codex", cursor: "agent" };
+const ALL_MODEL_IDS = {
+  claude: {
+    haiku: "claude-haiku-4-5-20251001",
+    sonnet: "claude-sonnet-5",
+    opus: "claude-opus-5",
+    default: "Claude CLI default",
+  },
+  codex: { default: "configured Codex model" },
+  cursor: { default: "configured Cursor model" },
+};
+const DEFAULT_MODEL_FOR = { claude: "haiku", codex: "default", cursor: "default" };
 
-function resolveModel(alias) {
+const MODEL_IDS = ALL_MODEL_IDS[RUNTIME];
+const DEFAULT_ENHANCE_MODEL = DEFAULT_MODEL_FOR[RUNTIME];
+const CLI = CLI_BIN[RUNTIME];
+
+function resolveModel(alias, cli = RUNTIME) {
   if (!alias || typeof alias !== "string") return "unknown";
-  return MODEL_IDS[alias] || alias;
+  return ALL_MODEL_IDS[cli][alias] || alias;
 }
 
 function detectModel() {
   if (RUNTIME === "codex") return "configured Codex model";
+  if (RUNTIME === "cursor") return "configured Cursor model";
   try {
     const raw = fs.readFileSync(SETTINGS_FILE, "utf8");
     const settings = JSON.parse(raw);
@@ -221,6 +233,20 @@ function enhanceWithCodex(instruction, model, cwd, callback) {
   child.stdin.end(instruction);
 }
 
+function enhanceWithAgent(instruction, cwd, callback) {
+  const args = ["-p", "--trust", "--output-format", "text"];
+  if (cwd && typeof cwd === "string" && fs.existsSync(cwd)) args.push("--workspace", cwd);
+  args.push(instruction);
+  execFile("agent", args, { timeout: 120000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+    if (err) {
+      const detail = err.killed ? "timed out after 120s" : (stderr || err.message).trim().slice(0, 500);
+      callback(new Error(detail));
+      return;
+    }
+    callback(null, stdout.trim());
+  });
+}
+
 // ---------- server ----------
 
 const server = http.createServer(async (req, res) => {
@@ -239,7 +265,9 @@ const server = http.createServer(async (req, res) => {
       return sendFile(res, path.join(ROOT, "style.css"), "text/css; charset=utf-8");
     }
     if (req.method === "GET" && url.pathname === "/models") {
-      return send(res, 200, { models: MODEL_IDS, default: DEFAULT_ENHANCE_MODEL });
+      // All three CLIs' model tables, so switching the Enhance CLI picker can
+      // repopulate the model dropdown without a round trip.
+      return send(res, 200, { models: MODEL_IDS, default: DEFAULT_ENHANCE_MODEL, byCli: ALL_MODEL_IDS, defaultByCli: DEFAULT_MODEL_FOR });
     }
     if (req.method === "GET" && url.pathname === "/health") {
       return send(res, 200, { ok: true, pid: process.pid, runtime: RUNTIME });
@@ -261,6 +289,11 @@ const server = http.createServer(async (req, res) => {
       const branch = await gitBranch(cwd);
       const modelAlias = detectModel();
       const cliAvailable = await which(CLI);
+      // Checked for all three so the Enhance CLI picker can grey out ones
+      // that aren't installed, not just the runtime that started this server.
+      const [claudeAvailable, codexAvailable, cursorAvailable] = await Promise.all(
+        ["claude", "codex", "agent"].map(which)
+      );
       return send(res, 200, {
         model: resolveModel(modelAlias),
         modelAlias,
@@ -269,6 +302,7 @@ const server = http.createServer(async (req, res) => {
         repo: cwd ? path.basename(cwd.replace(/\/+$/, "")) || null : null,
         branch,
         cliAvailable,
+        cliAvailability: { claude: claudeAvailable, codex: codexAvailable, cursor: cursorAvailable },
       });
     }
 
@@ -304,14 +338,18 @@ const server = http.createServer(async (req, res) => {
       const text = typeof data.content === "string" ? data.content : "";
       if (!text.trim()) return send(res, 400, { error: "empty prompt — nothing to enhance" });
 
-      const cliAvailable = await which(CLI);
+      // The picker defaults to this server's runtime but the user can point
+      // Enhance at any installed CLI, so resolve per-request, not from RUNTIME.
+      const cli = CLI_BIN[data.cli] ? data.cli : RUNTIME;
+      const cliBin = CLI_BIN[cli];
+      const cliAvailable = await which(cliBin);
       if (!cliAvailable) {
-        return send(res, 503, { error: `\`${CLI}\` CLI not found in PATH — install it to use Enhance` });
+        return send(res, 503, { error: `\`${cliBin}\` CLI not found in PATH — install it to use Enhance` });
       }
 
-      const requestedModel = typeof data.model === "string" && data.model ? data.model : DEFAULT_ENHANCE_MODEL;
-      const model = RUNTIME === "claude" && !MODEL_IDS[requestedModel]
-        ? DEFAULT_ENHANCE_MODEL
+      const requestedModel = typeof data.model === "string" && data.model ? data.model : DEFAULT_MODEL_FOR[cli];
+      const model = cli === "claude" && !ALL_MODEL_IDS.claude[requestedModel]
+        ? DEFAULT_MODEL_FOR[cli]
         : requestedModel;
 
       const ctx = data.context && typeof data.context === "object" ? data.context : {};
@@ -329,9 +367,14 @@ const server = http.createServer(async (req, res) => {
         contextLine +
         "Improve and tighten this prompt. Keep intent identical. Return only the improved prompt, no commentary:\n\n" +
         text;
-      if (RUNTIME === "codex") {
+      if (cli === "codex") {
         enhanceWithCodex(instruction, model, ctx.include ? data.cwd : null, (err, output) => {
           if (err) return send(res, 502, { error: `codex CLI failed: ${err.message.slice(0, 500)}` });
+          send(res, 200, { content: output || text });
+        });
+      } else if (cli === "cursor") {
+        enhanceWithAgent(instruction, ctx.include ? data.cwd : null, (err, output) => {
+          if (err) return send(res, 502, { error: `agent CLI failed: ${err.message.slice(0, 500)}` });
           send(res, 200, { content: output || text });
         });
       } else {
