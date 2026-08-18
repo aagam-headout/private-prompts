@@ -52,7 +52,7 @@ body {
 
 /* ---- header ---- */
 
-.topbar { margin-bottom: 32px; }
+.topbar { margin-bottom: 20px; }
 
 .topbar-row {
   display: flex;
@@ -163,8 +163,12 @@ body {
 .view-tab:hover { color: var(--fg); }
 .view-tab.is-active { color: var(--fg); border-bottom-color: var(--border-strong); }
 
-.panel-head-simple { padding: 14px 16px; }
-.panel-head-title { font-size: 12px; font-weight: 600; color: var(--fg); }
+.panel-head-simple {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 16px;
+}
+.panel-head-title { font-size: 12px; font-weight: 600; color: var(--fg); padding: 10px; margin: 0; text-transform: uppercase; letter-spacing: 0.08em; }
 
 /* ---- primary panel: editor + tabs ---- */
 
@@ -248,8 +252,7 @@ body {
 /* ---- history ---- */
 
 .history-panel {
-  min-height: 320px;
-  max-height: 480px;
+  max-height: 560px;
   overflow-y: auto;
   padding: 8px;
 }
@@ -294,8 +297,38 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-bottom: 8px;
 }
+
+.history-meta-right { display: flex; align-items: center; gap: 10px; }
+
+/* Icon actions stay out of the way until you hover the card — the row is
+   still keyboard-reachable (focus-within) so Tab users aren't locked out. */
+.history-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.history-item:hover .history-actions,
+.history-item:focus-within .history-actions {
+  opacity: 1;
+}
+
+.btn-text-only {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--muted);
+  padding: 3px 8px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-text-only:hover { color: var(--fg); border-color: var(--border-strong); }
 
 /* ---- secondary panels: enhance / save ---- */
 

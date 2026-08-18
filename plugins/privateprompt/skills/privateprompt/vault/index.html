@@ -74,10 +74,10 @@
 
   <section id="historyView" class="panel" hidden>
     <div class="panel-head panel-head-simple">
-      <span class="panel-head-title">Saved versions</span>
+      <span class="panel-head-title">Saved Prompts</span>
     </div>
     <div class="history-panel">
-      <div id="historyEmpty" class="history-empty" hidden>No saved versions yet — Save creates the first one.</div>
+      <div id="historyEmpty" class="history-empty" hidden>No saved prompts yet — Save creates the first one.</div>
       <ul id="historyList" class="history-list"></ul>
     </div>
   </section>
@@ -171,19 +171,33 @@ function renderHistory(entries) {
     const time = document.createElement('span');
     time.className = 'history-time';
     time.textContent = relativeTime(entry.ts);
-    const chars = document.createElement('span');
-    chars.className = 'history-chars';
-    chars.textContent = entry.content.length + ' chars';
-    meta.append(time, chars);
 
-    const preview = document.createElement('div');
-    preview.className = 'history-preview';
-    preview.textContent = entry.content.slice(0, 160).replace(/\s+/g, ' ');
+    const right = document.createElement('div');
+    right.className = 'history-meta-right';
+
+    const actions = document.createElement('div');
+    actions.className = 'history-actions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'btn-text-only history-copy';
+    copyBtn.type = 'button';
+    copyBtn.title = 'Copy to clipboard';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(entry.content);
+        copyBtn.textContent = 'Copied';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+      } catch {
+        setStatus('Copy failed — clipboard access was blocked.', true);
+      }
+    });
 
     const restoreBtn = document.createElement('button');
-    restoreBtn.className = 'btn btn-ghost history-restore';
+    restoreBtn.className = 'btn-text-only history-restore';
     restoreBtn.type = 'button';
-    restoreBtn.textContent = 'Restore to Original';
+    restoreBtn.title = 'Restore to Original';
+    restoreBtn.textContent = 'Restore';
     restoreBtn.addEventListener('click', () => {
       drafts.original = entry.content;
       switchView('editor');
@@ -191,7 +205,19 @@ function renderHistory(entries) {
       setStatus('Restored a version from ' + relativeTime(entry.ts) + ' — Save to keep it.');
     });
 
-    li.append(meta, preview, restoreBtn);
+    const chars = document.createElement('span');
+    chars.className = 'history-chars';
+    chars.textContent = entry.content.length + ' chars';
+
+    actions.append(copyBtn, restoreBtn);
+    right.append(actions, chars);
+    meta.append(time, right);
+
+    const preview = document.createElement('div');
+    preview.className = 'history-preview';
+    preview.textContent = entry.content.slice(0, 160).replace(/\s+/g, ' ');
+
+    li.append(meta, preview);
     historyList.appendChild(li);
   }
 }
@@ -316,7 +342,7 @@ async function doSave() {
   setStatus('Saving ' + activeTab + '...');
   try {
     await safeFetchJson('/save', { method: 'POST', body: JSON.stringify({ content, cwd }) });
-    setStatus('Saved ' + activeTab + ' to the vault.');
+    setStatus('Saved ' + activeTab + ' to the vault. Go back to your agent and tell it to use the prompt.');
     historyLoaded = false; // next History visit re-fetches so the new save shows up
   } catch (e) {
     setStatus('Save failed: ' + e.message, true);
