@@ -16,7 +16,7 @@
       </div>
       <div id="badges" class="badges" aria-live="polite"></div>
     </div>
-    <p class="hint">Saving stays on this machine. <strong>Enhance</strong> sends the open draft through your configured CLI; asking your agent to read a saved draft also supplies it as reference.</p>
+    <p class="hint">Saving stays on this machine. <strong>Enhance</strong> sends the open draft through the selected CLI.</p>
   </header>
 
   <div id="banner" class="banner" hidden></div>
@@ -33,46 +33,46 @@
           <button id="tab-original" class="tab is-active" role="tab" aria-selected="true" type="button">
             Original
           </button>
-          <button id="tab-enhanced" class="tab" role="tab" aria-selected="false" type="button" disabled>
+          <button id="tab-enhanced" class="tab" role="tab" aria-selected="false" type="button" disabled hidden>
             Enhanced <span id="enhancedDot" class="dot" hidden></span>
           </button>
         </div>
-        <span id="charcount" class="charcount">0 chars</span>
+        <span id="charcount" class="charcount" hidden>0 chars</span>
       </div>
 
       <div id="staleNotice" class="stale-notice" hidden>
-        <span id="staleText">Original changed after Enhance ran, so the Enhanced draft no longer matches it.</span>
+        <span id="staleText">Enhanced no longer matches this Original context.</span>
         <span class="stale-actions">
           <button id="discardEnhanced" class="btn-text-only" type="button">Delete Enhanced</button>
-          <button id="keepEnhanced" class="btn-text-only" type="button">Keep it</button>
+          <button id="keepEnhanced" class="btn-text-only" type="button">Keep</button>
         </span>
       </div>
 
       <textarea id="editor" rows="16" placeholder="Write your prompt here..." spellcheck="true"></textarea>
     </section>
 
-    <section class="panel panel-secondary">
+    <section id="enhancePanel" class="panel panel-secondary">
       <div class="panel-label">Enhance Prompt</div>
-      <p class="section-copy">Sends the tab you're viewing to the selected CLI and puts the result in a new Enhanced tab — your Original is never overwritten. Defaults to the agent you launched this from; switch it to send Enhance to a different installed CLI instead.</p>
+      <p class="section-copy">Rewrites the open tab into a separate <strong>Enhanced</strong> tab — Original is never overwritten.</p>
       <div class="enhance-row">
         <div class="enhance-controls">
-          <label class="model-picker">
+          <label id="cliPicker" class="model-picker">
             <span class="field-label">CLI</span>
-            <select id="cliSelect">
+            <select id="cliSelect" title="Send Enhance to a different installed CLI">
               <option value="claude">Claude</option>
               <option value="codex">Codex</option>
               <option value="cursor">Cursor</option>
             </select>
           </label>
-          <label class="model-picker">
+          <label id="modelPicker" class="model-picker">
             <span class="field-label">Model</span>
             <select id="modelSelect">
               <option value="default" selected>configured default</option>
             </select>
           </label>
-          <label class="ctx-toggle">
+          <label class="ctx-toggle" title="Passes repo name and git branch to the CLI">
             <input type="checkbox" id="useContext" checked>
-            Include project context (repo, branch)
+            Include project context
           </label>
         </div>
         <button id="enhance" class="btn btn-outline" type="button">
@@ -84,10 +84,10 @@
     <section class="panel panel-secondary">
       <div class="panel-label">Save Prompt</div>
       <div class="save-row">
-        <p class="section-copy">Stores whichever tab is open right now as this project's prompt, and adds it to History. Check the box to save both versions in one file instead — the agent then sees Original as background and acts on Enhanced.</p>
-        <label class="ctx-toggle">
+        <p id="saveCopy" class="section-copy">Stores the open tab as this project's prompt and adds it to History.</p>
+        <label id="saveBothLabel" class="ctx-toggle" title="Writes one file with Original as background and Enhanced as the task" hidden>
           <input type="checkbox" id="saveBoth" disabled>
-          Save both versions (Original + Enhanced)
+          Save both versions
         </label>
         <button id="save" class="btn btn-primary" type="button">Save for Agent <span class="kbd">&#8984;S</span></button>
       </div>
@@ -130,6 +130,10 @@ const editorView = document.getElementById('editorView');
 const historyView = document.getElementById('historyView');
 const historyList = document.getElementById('historyList');
 const historyEmpty = document.getElementById('historyEmpty');
+const enhancePanel = document.getElementById('enhancePanel');
+const cliPicker = document.getElementById('cliPicker');
+const modelPicker = document.getElementById('modelPicker');
+const saveBothLabel = document.getElementById('saveBothLabel');
 const staleNotice = document.getElementById('staleNotice');
 const discardEnhancedBtn = document.getElementById('discardEnhanced');
 const keepEnhancedBtn = document.getElementById('keepEnhanced');
@@ -153,9 +157,17 @@ let enhancedStale = false;
 let staleAcknowledged = false; // user chose "Keep it" — stop nagging until the next Enhance
 let lastSaved = null; // exact bytes last written, so an unchanged re-Save is a no-op
 
-function setStatus(msg, isError) {
+// Transient confirmations ("Copied", "Restored…") clear themselves so the line
+// never keeps reporting something that stopped being true minutes ago. Errors
+// and the post-Save instruction stay until the next action replaces them.
+let statusTimer = null;
+function setStatus(msg, isError, transient) {
+  if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
   status.textContent = msg || '';
-  status.className = isError ? 'error' : 'ok';
+  status.className = msg ? (isError ? 'error' : 'ok') : '';
+  if (msg && transient) {
+    statusTimer = setTimeout(() => { status.textContent = ''; status.className = ''; statusTimer = null; }, 6000);
+  }
 }
 
 function showBanner(msg) {
@@ -183,6 +195,7 @@ function renderBadges() {
 
 function updateCharcount() {
   charcount.textContent = editor.value.length + ' chars';
+  charcount.hidden = editor.value.length === 0; // "0 chars" next to an empty box says nothing
 }
 
 function relativeTime(ts) {
@@ -208,9 +221,21 @@ function setDraft(name, value) {
   }
 }
 
+// Everything that only makes sense once an Enhanced draft exists stays out of
+// the layout until it does — an always-present disabled tab and greyed-out
+// checkbox are just noise on a first-time draft.
+function refreshEnhancedUi() {
+  const hasEnhanced = !!drafts.enhanced.trim();
+  tabEnhanced.hidden = !hasEnhanced && activeTab !== 'enhanced';
+  saveBothLabel.hidden = !hasEnhanced;
+  // The stale warning belongs to the Original tab: on the Enhanced tab you are
+  // looking straight at the text it would be warning you about.
+  staleNotice.hidden = !enhancedStale || staleAcknowledged || activeTab !== 'original';
+}
+
 function setStale(isStale) {
   enhancedStale = isStale && !!drafts.enhanced.trim();
-  staleNotice.hidden = !enhancedStale || staleAcknowledged;
+  refreshEnhancedUi();
 }
 
 // Enhanced now exists and matches `source` — the Original text it came from.
@@ -231,11 +256,11 @@ function clearEnhanced() {
   drafts.enhanced = '';
   enhancedSource = null;
   staleAcknowledged = false;
-  setStale(false);
   tabEnhanced.disabled = true;
   enhancedDot.hidden = true;
   saveBothCheckbox.checked = false;
   saveBothCheckbox.disabled = true;
+  setStale(false); // last, so refreshEnhancedUi() sees the cleared draft
 }
 
 // A "Save both versions" file round-trips back into two drafts instead of
@@ -306,7 +331,7 @@ function renderHistory(entries) {
         copyBtn.textContent = 'Copied';
         setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
       } else {
-        setStatus('Copy failed — clipboard access was blocked. Restore it instead and copy from the editor.', true);
+        setStatus('Copy failed — clipboard access was blocked. Restore it and copy from the editor instead.', true);
       }
     });
 
@@ -372,7 +397,7 @@ function restoreEntry(entry) {
 
   if (split && split.enhanced) {
     setEnhanced(split.enhanced, incoming); // both halves came from the same snapshot, so they match
-    setStatus('Restored both versions from ' + relativeTime(entry.ts) + ' — Save to keep them.');
+    setStatus('Restored both versions from ' + relativeTime(entry.ts) + ' — Save to keep them.', false, true);
     return;
   }
 
@@ -382,10 +407,10 @@ function restoreEntry(entry) {
     enhancedSource = null;
     staleAcknowledged = false;
     setStale(true);
-    setStatus('Restored a version from ' + relativeTime(entry.ts) + ' — the existing Enhanced draft no longer matches it.');
+    setStatus('Restored a version from ' + relativeTime(entry.ts) + ' — the existing Enhanced draft no longer matches it.', false, true);
     return;
   }
-  setStatus('Restored a version from ' + relativeTime(entry.ts) + ' — Save to keep it.');
+  setStatus('Restored a version from ' + relativeTime(entry.ts) + ' — Save to keep it.', false, true);
 }
 
 async function deleteEntry(entry, btn) {
@@ -398,7 +423,7 @@ async function deleteEntry(entry, btn) {
       body: JSON.stringify({ id: entry.id, cwd }),
     });
     renderHistory(d.entries || []); // server returns the surviving list, so no second round trip
-    setStatus(d.removed ? 'Deleted one snapshot from History.' : 'That snapshot was already gone.');
+    setStatus(d.removed ? 'Deleted one snapshot from History.' : 'That snapshot was already gone.', false, true);
   } catch (e) {
     btn.disabled = false;
     setStatus('Delete failed: ' + e.message, true);
@@ -433,6 +458,7 @@ function switchTab(name) {
   tabOriginal.setAttribute('aria-selected', String(isOriginal));
   tabEnhanced.classList.toggle('is-active', !isOriginal);
   tabEnhanced.setAttribute('aria-selected', String(!isOriginal));
+  refreshEnhancedUi(); // the stale notice belongs to Original only
 }
 
 tabOriginal.addEventListener('click', () => switchTab('original'));
@@ -442,17 +468,35 @@ const CLI_BINARIES = { claude: 'claude', codex: 'codex', cursor: 'agent' };
 
 // Enhance's disabled state tracks whichever CLI is selected in the picker,
 // not just the runtime this page was launched from.
+function cliIsAvailable(cli) {
+  return session.cliAvailability ? session.cliAvailability[cli] !== false
+    : (cli === session.runtime ? session.cliAvailable !== false : true);
+}
+
 function applyCliAvailability() {
   const cli = cliSelect.value;
-  const available = session.cliAvailability ? session.cliAvailability[cli] !== false
-    : (cli === session.runtime ? session.cliAvailable !== false : true);
+  const available = cliIsAvailable(cli);
   enhanceBtn.disabled = !available;
   const bin = CLI_BINARIES[cli] || cli;
   if (!available) {
     enhanceBtn.title = bin + ' CLI not found in PATH';
-    showBanner(bin + ' CLI not found in PATH — Enhance is disabled for this CLI. Save still works.');
   } else {
     enhanceBtn.title = '';
+  }
+
+  // Drop the CLI picker when there is nothing to pick between, and the whole
+  // Enhance panel when no CLI is installed at all — a permanently dead panel
+  // and a one-item dropdown are both pure noise. The top banner then only has
+  // to explain the case the user can't fix from here.
+  const installed = Object.keys(CLI_BINARIES).filter(cliIsAvailable);
+  const noneInstalled = installed.length === 0;
+  cliPicker.hidden = installed.length < 2;
+  enhancePanel.hidden = noneInstalled;
+  if (noneInstalled) {
+    showBanner('No agent CLI found in PATH — Enhance is unavailable. Writing and saving still work.');
+  } else if (!available) {
+    showBanner(bin + ' CLI not found in PATH — pick another CLI to enhance with. Save still works.');
+  } else {
     banner.hidden = true;
   }
 }
@@ -469,6 +513,9 @@ function populateModelsFor(cli) {
     modelSelect.appendChild(opt);
   }
   modelSelect.value = defaultModelByCli[cli] || 'default';
+  // Codex and Cursor expose a single "configured default" — a dropdown with one
+  // unchangeable entry is decoration, so hide it for them.
+  modelPicker.hidden = modelSelect.options.length < 2;
 }
 
 cliSelect.addEventListener('change', () => {
@@ -544,13 +591,13 @@ editor.addEventListener('input', () => {
 
 discardEnhancedBtn.addEventListener('click', () => {
   clearEnhanced();
-  setStatus('Deleted the Enhanced draft. Only Original will be saved.');
+  setStatus('Deleted the Enhanced draft.', false, true);
 });
 
 keepEnhancedBtn.addEventListener('click', () => {
   staleAcknowledged = true;
-  staleNotice.hidden = true;
-  setStatus('Keeping the Enhanced draft as-is.');
+  refreshEnhancedUi();
+  setStatus('Keeping the Enhanced draft as-is.', false, true);
 });
 
 const lockable = [editor, useContext, cliSelect, modelSelect, saveBtn, saveBothCheckbox, enhanceBtn, tabOriginal, tabEnhanced, viewEditorBtn, viewHistoryBtn, discardEnhancedBtn, keepEnhancedBtn];
@@ -564,6 +611,7 @@ function setBusy(busy) {
     tabEnhanced.disabled = !hasEnhanced && activeTab !== 'enhanced';
     saveBothCheckbox.disabled = !hasEnhanced || !drafts.original.trim();
     if (saveBothCheckbox.disabled) saveBothCheckbox.checked = false;
+    refreshEnhancedUi();
     applyCliAvailability();
   }
 }
@@ -597,7 +645,7 @@ function confirmStaleBeforeSave() {
   if (savingBoth) {
     if (!window.confirm('The Enhanced draft was generated from an earlier version of Original.\n\nOK — save both anyway.\nCancel — stop, so you can re-run Enhance first.')) return false;
     staleAcknowledged = true;
-    staleNotice.hidden = true;
+    refreshEnhancedUi();
     return true;
   }
   // Saving the Enhanced tab itself is an explicit choice of that text — no ask.
@@ -606,17 +654,17 @@ function confirmStaleBeforeSave() {
     clearEnhanced();
   } else {
     staleAcknowledged = true;
-    staleNotice.hidden = true;
+    refreshEnhancedUi();
   }
   return true;
 }
 
 async function doSave() {
-  if (!confirmStaleBeforeSave()) { setStatus('Save cancelled — re-run Enhance, then save.'); return; }
+  if (!confirmStaleBeforeSave()) { setStatus('Save cancelled — re-run Enhance, then save.', false, true); return; }
   const { content, label } = contentToSave();
   if (!content.trim()) { setStatus('Nothing to save — prompt is empty.', true); editor.focus(); return; }
   // Re-saving byte-identical content only adds a duplicate History snapshot.
-  if (content === lastSaved) { setStatus('Already saved — nothing changed since the last save.'); return; }
+  if (content === lastSaved) { setStatus('Already saved — nothing changed since the last save.', false, true); return; }
   setBusy(true);
   setStatus('Saving ' + label + '...');
   try {

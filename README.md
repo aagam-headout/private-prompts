@@ -102,7 +102,21 @@ Environment variables, all optional:
 - `PRIVATEPROMPT_PORT` — override the port the local server binds to
   (default `8974`).
 
-To stop the server manually: `pkill -f "privateprompt-server.js"`.
+## Running it yourself
+
+`/privateprompt` handles this for you, but the vault is one command on its own —
+it health-checks, starts only if nothing is listening, waits for the port, and
+opens the page:
+
+```bash
+<plugin-root>/skills/privateprompt/vault/start.sh          # start (if needed) + open
+<plugin-root>/skills/privateprompt/vault/start.sh --cwd /path/to/project
+<plugin-root>/skills/privateprompt/vault/start.sh --no-open  # just print the URL
+<plugin-root>/skills/privateprompt/vault/start.sh --stop
+```
+
+Re-running it is safe: an already-running server is reused, and a port held by a
+different agent runtime is refused rather than reused against the wrong vault.
 
 ## License
 

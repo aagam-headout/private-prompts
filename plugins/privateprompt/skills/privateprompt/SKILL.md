@@ -25,8 +25,9 @@ drafts live in a runtime-specific directory under the home folder
    ```
    If missing, tell the user and stop.
 
-2. Resolve the bundled vault directory and start the loopback-only server in
-   the **same shell command**. Prefer each host's plugin-root variable when set:
+2. Resolve the bundled vault directory, then hand off to `vault/start.sh`, which
+   health-checks, starts if needed, and opens the page in one call. Prefer each
+   host's plugin-root variable when set:
    `${CURSOR_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_ROOT}`, or the installed Codex
    path from `codex plugin list`. `PRIVATEPROMPT_PLUGIN_ROOT` is the override for
    a manually copied installation; pair it with `PRIVATEPROMPT_RUNTIME` when
@@ -49,37 +50,29 @@ drafts live in a runtime-specific directory under the home folder
      echo "privateprompt plugin files could not be located"
      exit 1
    fi
-   privateprompt_vault="$privateprompt_root/skills/privateprompt/vault"
-   privateprompt_port="${PRIVATEPROMPT_PORT:-8974}"
-   privateprompt_health="$(curl -fsS "http://127.0.0.1:$privateprompt_port/health" 2>/dev/null || true)"
-   if [ -z "$privateprompt_health" ]; then
-     PRIVATEPROMPT_RUNTIME="$privateprompt_runtime" \
-       PRIVATEPROMPT_PORT="$privateprompt_port" \
-       nohup node "$privateprompt_vault/privateprompt-server.js" >/dev/null 2>&1 &
-   elif ! printf '%s' "$privateprompt_health" | grep -q "\"runtime\":\"$privateprompt_runtime\""; then
-     echo "privateprompt is already running for a different agent runtime; stop it first"
-     exit 1
-   fi
+   PRIVATEPROMPT_RUNTIME="$privateprompt_runtime" \
+     bash "$privateprompt_root/skills/privateprompt/vault/start.sh" --cwd "$(pwd)"
    ```
+   `start.sh` is idempotent: it reuses a server that is already up, refuses a
+   port held by a different agent runtime, waits until `/health` answers, and
+   opens the page with the project directory attached (so the page can show
+   project and Git-branch context and keep each project's draft separate). It
+   prints the URL — pass it to the user if no browser opened. `--no-open` starts
+   without opening; `--stop` stops the server.
 
-3. Open it, passing the current project directory so the page can show project
-   and Git-branch context and keep each project's draft separate:
-   ```bash
-   open "http://127.0.0.1:${PRIVATEPROMPT_PORT:-8974}/?cwd=$(pwd)"
-   ```
-   (Linux: `xdg-open`; if neither exists, give the user the URL.)
-
-4. Tell the user to write or paste the prompt in the page, optionally click
+3. Tell the user to write or paste the prompt in the page, optionally click
    **Enhance**, then click **Save** (or Cmd/Ctrl+S). Enhance's CLI picker
    defaults to the current runtime but can be pointed at any installed CLI
    (Claude, Codex, Cursor's `agent`) with its own model dropdown. By default
    Save stores whichever tab (Original or Enhanced) is open; checking
    **Save both versions** instead writes one file with both under
    `## Original` / `## Enhanced` headings, so you see both when you read it
-   back. Ask the user to return and say done. If the page says a CLI is
-   unavailable, Enhance is disabled for that CLI but Save still works.
+   back. Ask the user to return and say done. The page hides what does not
+   apply: the Enhanced tab and **Save both versions** appear only once an
+   Enhanced draft exists, the CLI picker only when more than one CLI is
+   installed, and the whole Enhance panel disappears when none is.
 
-5. Once the user confirms, read that project's prompt file. Use
+4. Once the user confirms, read that project's prompt file. Use
    `~/.codex/private-prompts/prompts/<hash>.md` for Codex,
    `~/.claude/private-prompts/prompts/<hash>.md` for Claude Code, and
    `~/.cursor/private-prompts/prompts/<hash>.md` for Cursor. If
@@ -110,7 +103,7 @@ drafts live in a runtime-specific directory under the home folder
   pairs a new Original with an Enhanced built from older text.
 - The server has no authentication and binds only to `127.0.0.1`. Other
   processes under the same local account can still reach it.
-- To stop the server: `pkill -f "privateprompt-server.js"`.
+- To stop the server: `vault/start.sh --stop` (or `pkill -f "privateprompt-server.js"`).
 - For a manually copied installation, set `PRIVATEPROMPT_PLUGIN_ROOT` to the
   directory containing the plugin manifest and `skills/`. Set
   `PRIVATEPROMPT_RUNTIME` to `cursor`, `claude`, or `codex` when the host does
