@@ -2,7 +2,7 @@
   "name": "private-prompt",
   "displayName": "Private Prompt Vault",
   "description": "Draft prompts in a local browser vault, outside the current repository's working tree.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": {
     "name": "aagam-headout"
   },

@@ -1,7 +1,7 @@
 {
   "name": "private-prompt",
   "description": "Draft prompts in a local browser vault, then let Codex read the saved file as reference context without requiring the user to paste it into chat.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": {
     "name": "aagam-headout"
   },

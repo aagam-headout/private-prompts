@@ -1,6 +1,6 @@
 ---
-name: private-prompt
-description: Use when the user invokes /private-prompt, or wants to draft or optionally enhance a prompt in a local browser page before the agent reads the saved file as reference context instead of the prompt appearing in chat.
+name: compose
+description: Draft or enhance a prompt in a local browser page; the agent reads the saved file as reference instead of the prompt appearing in chat.
 ---
 
 # Private Prompt Vault
@@ -32,11 +32,11 @@ repository and stable across plugin updates.
    ```sh
    private_prompt_vault=""
    if [ -n "${PP_PLUGIN_ROOT:-}" ]; then
-     private_prompt_vault="$PP_PLUGIN_ROOT/skills/private-prompt/vault"
+     private_prompt_vault="$PP_PLUGIN_ROOT/skills/compose/vault"
    else
      # Newest by version, not lexical order: plugin caches keep versions side by
      # side, and plain `sort -r` prefers 1.3.0 over 1.10.0.
-     private_prompt_found="$(find "$HOME/.claude/plugins" "$HOME/.cursor/plugins" "$HOME/.codex/plugins" "$HOME/.agents" -maxdepth 12 -type f -path '*private-prompt/vault/start.js' 2>/dev/null | sort -Vr | head -1)"
+     private_prompt_found="$(find "$HOME/.claude/plugins" "$HOME/.cursor/plugins" "$HOME/.codex/plugins" "$HOME/.agents" -maxdepth 12 -type f -path '*prompt*/skills/compose/vault/start.js' 2>/dev/null | sort -Vr | head -1)"
      [ -n "$private_prompt_found" ] && private_prompt_vault="$(dirname "$private_prompt_found")"
    fi
    if [ ! -f "$private_prompt_vault/start.js" ]; then

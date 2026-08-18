@@ -1,6 +1,6 @@
 ---
-name: private-prompt-apply
-description: Use when the user invokes /private-prompt-apply, asks to apply, run, execute, or implement the latest saved private prompt for the current project, or wants it carried out without a separate confirmation step.
+name: apply
+description: Apply, run, or implement the latest saved private prompt for the current project, without a separate confirmation step.
 ---
 
 # Apply Saved Private Prompt
@@ -20,7 +20,7 @@ from the vault.
    ```
 
 2. If the file is missing or empty, say that no saved prompt exists for this
-   project and direct the user to `/private-prompt`.
+   project and direct the user to `/private-prompt:compose`.
 
 3. Read the path printed by the command with the file-reading tool. If the
    file starts with `## Original` and `## Enhanced` headings (saved via

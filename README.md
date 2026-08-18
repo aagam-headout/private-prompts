@@ -6,14 +6,14 @@ as reference — the prompt itself never has to appear in the chat transcript.
 
 ## Commands
 
-- **`/private-prompt`** — open the vault page to draft, optionally enhance,
+- **`/private-prompt:compose`** — open the vault page to draft, optionally enhance,
   and save a prompt.
-- **`/private-prompt-apply`** — read the current project's latest saved
+- **`/private-prompt:apply`** — read the current project's latest saved
   prompt and carry it out immediately, no re-confirmation.
 
 ## How it works
 
-1. `/private-prompt` starts a local, loopback-only server and opens it in
+1. `/private-prompt:compose` starts a local, loopback-only server and opens it in
    your browser.
 2. Write or paste a prompt, optionally **Enhance** it (pick any installed
    CLI and model), then **Save**. Save keeps
@@ -22,7 +22,7 @@ as reference — the prompt itself never has to appear in the chat transcript.
 3. The agent reads that file as reference context instead of you pasting it
    into chat. If the file holds both versions, Enhanced is the task and
    Original is background only.
-4. `/private-prompt-apply` does step 3 without asking first.
+4. `/private-prompt:apply` does step 3 without asking first.
 
 Drafts live in one vault for every agent — `~/.private-prompt/prompts/<sha1 of
 the project directory>.md` — so the path a skill reads is fully determined by the
@@ -106,15 +106,15 @@ Environment variables, all optional:
 
 ## Running it yourself
 
-`/private-prompt` handles this for you, but the vault is one command on its own —
+`/private-prompt:compose` handles this for you, but the vault is one command on its own —
 it health-checks, starts only if nothing is listening, waits for the port, and
 opens the page:
 
 ```bash
-node <plugin-root>/skills/private-prompt/vault/start.js            # start (if needed) + open
-node <plugin-root>/skills/private-prompt/vault/start.js --cwd /path/to/project
-node <plugin-root>/skills/private-prompt/vault/start.js --no-open  # just print the URL
-node <plugin-root>/skills/private-prompt/vault/start.js --stop
+node <plugin-root>/skills/compose/vault/start.js            # start (if needed) + open
+node <plugin-root>/skills/compose/vault/start.js --cwd /path/to/project
+node <plugin-root>/skills/compose/vault/start.js --no-open  # just print the URL
+node <plugin-root>/skills/compose/vault/start.js --stop
 ```
 
 The launcher is pure Node — no bash, `curl`, `nohup`, or `pkill` — so it behaves

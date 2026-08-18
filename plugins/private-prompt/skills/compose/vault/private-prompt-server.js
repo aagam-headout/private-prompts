@@ -157,7 +157,7 @@ function cwdHash(cwd) {
   return crypto.createHash("sha1").update(cwd).digest("hex").slice(0, 12);
 }
 
-// One prompt file per repo/cwd so concurrent /private-prompt calls from
+// One prompt file per repo/cwd so concurrent /private-prompt:compose calls from
 // different projects never clobber each other. No cwd -> shared scratch file.
 function promptFileFor(cwd) {
   const resolved = normalizeCwd(cwd);
