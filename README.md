@@ -109,13 +109,17 @@ it health-checks, starts only if nothing is listening, waits for the port, and
 opens the page:
 
 ```bash
-<plugin-root>/skills/privateprompt/vault/start.sh          # start (if needed) + open
-<plugin-root>/skills/privateprompt/vault/start.sh --cwd /path/to/project
-<plugin-root>/skills/privateprompt/vault/start.sh --no-open  # just print the URL
-<plugin-root>/skills/privateprompt/vault/start.sh --stop
+node <plugin-root>/skills/privateprompt/vault/start.js            # start (if needed) + open
+node <plugin-root>/skills/privateprompt/vault/start.js --cwd /path/to/project
+node <plugin-root>/skills/privateprompt/vault/start.js --no-open  # just print the URL
+node <plugin-root>/skills/privateprompt/vault/start.js --stop
 ```
 
-Re-running it is safe: an already-running server is reused, and a port held by a
+The launcher is pure Node — no bash, `curl`, `nohup`, `pkill`, or `open` — so it
+behaves the same under Claude Code, Codex, Cursor, or a plain terminal, on macOS,
+Linux, and Windows. (`start.sh` is a thin wrapper for shell convenience.)
+
+Re-running it is safe: an already-running server is reused, and a port serving a
 different agent runtime is refused rather than reused against the wrong vault.
 
 ## License

@@ -25,40 +25,41 @@ drafts live in a runtime-specific directory under the home folder
    ```
    If missing, tell the user and stop.
 
-2. Resolve the bundled vault directory, then hand off to `vault/start.sh`, which
-   health-checks, starts if needed, and opens the page in one call. Prefer each
-   host's plugin-root variable when set:
-   `${CURSOR_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_ROOT}`, or the installed Codex
-   path from `codex plugin list`. `PRIVATEPROMPT_PLUGIN_ROOT` is the override for
-   a manually copied installation; pair it with `PRIVATEPROMPT_RUNTIME` when
-   needed. If another runtime owns the port, tell the user to stop it.
-   ```bash
-   if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
-     privateprompt_root="$CURSOR_PLUGIN_ROOT"
-     privateprompt_runtime="cursor"
-   elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-     privateprompt_root="$CLAUDE_PLUGIN_ROOT"
-     privateprompt_runtime="claude"
-   elif [ -n "${PRIVATEPROMPT_PLUGIN_ROOT:-}" ]; then
-     privateprompt_root="$PRIVATEPROMPT_PLUGIN_ROOT"
-     privateprompt_runtime="${PRIVATEPROMPT_RUNTIME:-codex}"
+2. Locate the bundled vault directory and hand off to `vault/start.js`, which
+   health-checks, starts if needed, and opens the page in one call. Do not rely
+   on `CLAUDE_PLUGIN_ROOT` / `CURSOR_PLUGIN_ROOT` inside the command — hosts do
+   not export those into shell calls. Search the install locations instead, so
+   the same command works under Claude Code, Codex, Cursor, and a bare terminal:
+   ```sh
+   privateprompt_vault=""
+   if [ -n "${PRIVATEPROMPT_PLUGIN_ROOT:-}" ] && [ -f "$PRIVATEPROMPT_PLUGIN_ROOT/skills/privateprompt/vault/start.js" ]; then
+     privateprompt_vault="$PRIVATEPROMPT_PLUGIN_ROOT/skills/privateprompt/vault"
    else
-     privateprompt_root="$(codex plugin list 2>/dev/null | awk '$1 ~ /^privateprompt@/ { print $NF; exit }')"
-     privateprompt_runtime="codex"
+     privateprompt_found="$(find "$HOME/.claude/plugins" "$HOME/.cursor/plugins" "$HOME/.codex/plugins" "$HOME/.agents" -maxdepth 8 -type f -name start.js -path '*privateprompt*' 2>/dev/null | sort -r | head -1)"
+     [ -n "$privateprompt_found" ] && privateprompt_vault="$(dirname "$privateprompt_found")"
    fi
-   if [ -z "$privateprompt_root" ] || [ ! -f "$privateprompt_root/skills/privateprompt/vault/privateprompt-server.js" ]; then
-     echo "privateprompt plugin files could not be located"
+   if [ -z "$privateprompt_vault" ]; then
+     if find "$HOME/.claude/plugins" "$HOME/.cursor/plugins" "$HOME/.codex/plugins" "$HOME/.agents" -maxdepth 8 -type f -name privateprompt-server.js 2>/dev/null | grep -q .; then
+       echo "installed privateprompt predates start.js — update the plugin"
+     else
+       echo "privateprompt plugin files could not be located"
+     fi
      exit 1
    fi
-   PRIVATEPROMPT_RUNTIME="$privateprompt_runtime" \
-     bash "$privateprompt_root/skills/privateprompt/vault/start.sh" --cwd "$(pwd)"
+   node "$privateprompt_vault/start.js" --cwd "$(pwd)"
    ```
-   `start.sh` is idempotent: it reuses a server that is already up, refuses a
-   port held by a different agent runtime, waits until `/health` answers, and
-   opens the page with the project directory attached (so the page can show
-   project and Git-branch context and keep each project's draft separate). It
-   prints the URL — pass it to the user if no browser opened. `--no-open` starts
-   without opening; `--stop` stops the server.
+   If the path above resolves to a version older than the one this document came
+   from, prefer the directory this skill was loaded from.
+
+   `start.js` is pure Node — no bash, `curl`, `nohup`, `pkill`, or `open`
+   required — and idempotent: it reuses a server that is already up, refuses a
+   port serving a different agent runtime, polls `/health` until ready, and opens
+   the page with the project directory attached (so the page can show project and
+   Git-branch context and keep each project's draft separate). It infers the
+   runtime from its own install path, or from `PRIVATEPROMPT_RUNTIME` when set.
+   It prints the URL — pass that to the user if no browser opened. `--no-open`
+   starts without opening; `--stop` stops the server; `--port` overrides the
+   port. (`start.sh` is a thin wrapper around it for shell convenience.)
 
 3. Tell the user to write or paste the prompt in the page, optionally click
    **Enhance**, then click **Save** (or Cmd/Ctrl+S). Enhance's CLI picker
@@ -72,16 +73,28 @@ drafts live in a runtime-specific directory under the home folder
    Enhanced draft exists, the CLI picker only when more than one CLI is
    installed, and the whole Enhance panel disappears when none is.
 
-4. Once the user confirms, read that project's prompt file. Use
-   `~/.codex/private-prompts/prompts/<hash>.md` for Codex,
-   `~/.claude/private-prompts/prompts/<hash>.md` for Claude Code, and
-   `~/.cursor/private-prompts/prompts/<hash>.md` for Cursor. If
-   `PRIVATEPROMPT_DATA_DIR` was used to override storage, use that location
-   instead:
+4. Once the user confirms, resolve and read that project's prompt file. Do not
+   guess the runtime directory from `CLAUDE_PLUGIN_ROOT` and friends — those are
+   not exported into shell calls. Check every candidate and take the most
+   recently written file:
    ```bash
-   echo -n "$(pwd)" | shasum | cut -c1-12
+   privateprompt_hash="$(printf %s "$(pwd)" | shasum | cut -c1-12)"
+   if [ -n "${PRIVATEPROMPT_DATA_DIR:-}" ]; then
+     set -- "$PRIVATEPROMPT_DATA_DIR"   # explicit override wins outright
+   else
+     set -- "$HOME/.claude/private-prompts" "$HOME/.cursor/private-prompts" "$HOME/.codex/private-prompts"
+   fi
+   privateprompt_file=""
+   for privateprompt_dir in "$@"; do
+     privateprompt_candidate="$privateprompt_dir/prompts/${privateprompt_hash}.md"
+     [ -s "$privateprompt_candidate" ] || continue
+     if [ -z "$privateprompt_file" ] || [ "$privateprompt_candidate" -nt "$privateprompt_file" ]; then
+       privateprompt_file="$privateprompt_candidate"
+     fi
+   done
+   test -n "$privateprompt_file" && printf '%s\n' "$privateprompt_file"
    ```
-   That content is the actual reference. If the file starts with `## Original`
+   That file's content is the actual reference. If the file starts with `## Original`
    and `## Enhanced` headings (from **Save both versions**), treat the text
    under `## Enhanced` as the actionable prompt and `## Original` as
    background only — Enhanced is the version the user chose to act on.
@@ -103,7 +116,9 @@ drafts live in a runtime-specific directory under the home folder
   pairs a new Original with an Enhanced built from older text.
 - The server has no authentication and binds only to `127.0.0.1`. Other
   processes under the same local account can still reach it.
-- To stop the server: `vault/start.sh --stop` (or `pkill -f "privateprompt-server.js"`).
+- To stop the server: `node vault/start.js --stop` (it asks the server to exit
+  over loopback, so no `pkill` or `taskkill` is involved). Any local process
+  under this account can call that route, same as `/save`.
 - For a manually copied installation, set `PRIVATEPROMPT_PLUGIN_ROOT` to the
   directory containing the plugin manifest and `skills/`. Set
   `PRIVATEPROMPT_RUNTIME` to `cursor`, `claude`, or `codex` when the host does

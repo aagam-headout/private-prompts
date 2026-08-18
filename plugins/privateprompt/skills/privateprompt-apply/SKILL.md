@@ -9,20 +9,26 @@ Read the latest saved prompt for the current project and carry it out
 immediately. Do not ask the user to confirm again merely because the task came
 from the vault.
 
-1. Resolve the current project's saved prompt path:
+1. Resolve the current project's saved prompt path. Plugin-root variables like
+   `CLAUDE_PLUGIN_ROOT` are not exported into shell calls, so they cannot say
+   which runtime saved the prompt — check every candidate directory and take the
+   most recently written file, which is by definition the latest save:
    ```bash
-   if [ -n "${PRIVATEPROMPT_DATA_DIR:-}" ]; then
-     privateprompt_data_dir="$PRIVATEPROMPT_DATA_DIR"
-   elif [ -n "${CURSOR_PLUGIN_ROOT:-}" ] || [ "${PRIVATEPROMPT_RUNTIME:-}" = "cursor" ]; then
-     privateprompt_data_dir="$HOME/.cursor/private-prompts"
-   elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] || [ "${PRIVATEPROMPT_RUNTIME:-}" = "claude" ]; then
-     privateprompt_data_dir="$HOME/.claude/private-prompts"
-   else
-     privateprompt_data_dir="$HOME/.codex/private-prompts"
-   fi
    privateprompt_hash="$(printf %s "$(pwd)" | shasum | cut -c1-12)"
-   privateprompt_file="$privateprompt_data_dir/prompts/${privateprompt_hash}.md"
-   test -s "$privateprompt_file" && printf '%s\n' "$privateprompt_file"
+   if [ -n "${PRIVATEPROMPT_DATA_DIR:-}" ]; then
+     set -- "$PRIVATEPROMPT_DATA_DIR"   # explicit override wins outright
+   else
+     set -- "$HOME/.claude/private-prompts" "$HOME/.cursor/private-prompts" "$HOME/.codex/private-prompts"
+   fi
+   privateprompt_file=""
+   for privateprompt_dir in "$@"; do
+     privateprompt_candidate="$privateprompt_dir/prompts/${privateprompt_hash}.md"
+     [ -s "$privateprompt_candidate" ] || continue
+     if [ -z "$privateprompt_file" ] || [ "$privateprompt_candidate" -nt "$privateprompt_file" ]; then
+       privateprompt_file="$privateprompt_candidate"
+     fi
+   done
+   test -n "$privateprompt_file" && printf '%s\n' "$privateprompt_file"
    ```
 
 2. If the file is missing or empty, say that no saved prompt exists for this
