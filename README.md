@@ -11,7 +11,7 @@ appear in the transcript, and you can line up work while the agent is busy.
 ## Quick start
 
 ```bash
-npx prompt-vault
+npx -y @aagam-headout/prompt-vault
 ```
 
 That starts a loopback-only server and opens the queue for the current
@@ -22,16 +22,22 @@ directory. Add prompts, then in your agent run `/prompt-vault:next`.
 The CLI is the whole interface. `next`, `done`, and `list` read and write the
 database directly, so they work whether or not the browser page is running.
 
-```bash
-npx prompt-vault                  # start the vault (if needed) and open it
-npx prompt-vault --no-open        # start only, print the URL
-npx prompt-vault --stop           # stop the running vault
+Install it once so the commands below are short:
 
-npx prompt-vault next             # claim the next pending prompt
-npx prompt-vault next 2           # claim the next two
-npx prompt-vault next --all       # claim everything pending
-npx prompt-vault done 7           # mark prompt 7 done
-npx prompt-vault list             # show this project's queue
+```bash
+npm install -g @aagam-headout/prompt-vault
+```
+
+```bash
+prompt-vault                  # start the vault (if needed) and open it
+prompt-vault --no-open        # start only, print the URL
+prompt-vault --stop           # stop the running vault
+
+prompt-vault next             # claim the next pending prompt
+prompt-vault next 2           # claim the next two
+prompt-vault next --all       # claim everything pending
+prompt-vault done 7           # mark prompt 7 done
+prompt-vault list             # show this project's queue
 ```
 
 Flags: `--cwd <path>` (defaults to the current directory), `--port <n>`,
@@ -71,9 +77,12 @@ codex plugin add prompt-vault@prompt-vault
 Open **Cursor Settings**, find the plugins section, add this repo
 (`aagam-headout/prompt-vault`) as a marketplace, then add the plugin.
 
-The skills only shell out to `npx -y prompt-vault`, so the plugin itself is
-two markdown files — there is nothing to keep in sync between the plugin and
-the app.
+The skills only shell out to `npx -y @aagam-headout/prompt-vault` — a scoped
+name, so an agent following a skill can only ever resolve a package published
+under this account, never an unowned name someone else controls. The plugin
+itself is two markdown files; there is nothing to keep in sync between the
+plugin and the app, and publishing a new version reaches users without touching
+the skills.
 
 ## How it works
 
@@ -129,8 +138,8 @@ npm run build      # rebuild dist/
 The UI is built with Vite (React, Tailwind, shadcn/ui) and Geist is bundled
 locally, so a running vault makes no external network requests.
 
-`dist/` is **not** in git — `npx prompt-vault` resolves from the npm registry,
-so the built UI only has to exist in the tarball, not in the repository. The
+`dist/` is **not** in git — the CLI resolves from the npm registry, so the built
+UI only has to exist in the tarball, not in the repository. The
 `prepack` script rebuilds it automatically on `npm pack` and `npm publish`,
 which also makes it impossible to publish a stale bundle.
 

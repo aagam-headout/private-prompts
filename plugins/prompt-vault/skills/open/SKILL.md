@@ -31,7 +31,7 @@ Everything lives in one SQLite database outside any repository —
    than queueing prompts where this agent will not read them.
 
    ```sh
-   npx -y prompt-vault --cwd "$(pwd)"
+   npx -y @aagam-headout/prompt-vault --cwd "$(pwd)"
    ```
 
    It prints the URL. If no browser opened, give that URL to the user.
@@ -45,9 +45,9 @@ Everything lives in one SQLite database outside any repository —
 
 - The queue is global but tagged by project directory: the page can show every
   project, while `next` only ever claims prompts belonging to the current one.
-- `npx -y prompt-vault --no-open` starts without opening a browser;
+- `npx -y @aagam-headout/prompt-vault --no-open` starts without opening a browser;
   `--stop` stops the server; `--port` overrides the port.
-- `npx -y prompt-vault list` prints this project's queue as a table, which is
+- `npx -y @aagam-headout/prompt-vault list` prints this project's queue as a table, which is
   usually enough to answer "what's queued?" without opening the page.
 - The server binds only to `127.0.0.1` and rejects any request whose `Host` is
   not loopback or whose `Origin` is another site, so a page the user happens to

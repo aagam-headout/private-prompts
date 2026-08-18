@@ -15,9 +15,9 @@ not ask the user to confirm again merely because the task came from the vault.
    a second agent cannot pick up the same one.
 
    ```sh
-   npx -y prompt-vault next --cwd "$(pwd)"          # the next one
-   npx -y prompt-vault next 2 --cwd "$(pwd)"        # the next two
-   npx -y prompt-vault next --all --cwd "$(pwd)"    # everything pending
+   npx -y @aagam-headout/prompt-vault next --cwd "$(pwd)"          # the next one
+   npx -y @aagam-headout/prompt-vault next 2 --cwd "$(pwd)"        # the next two
+   npx -y @aagam-headout/prompt-vault next --all --cwd "$(pwd)"    # everything pending
    ```
 
 2. If it reports no pending prompts, say so and point the user at
@@ -37,7 +37,7 @@ not ask the user to confirm again merely because the task came from the vault.
    interrupted run leaves accurate state behind:
 
    ```sh
-   npx -y prompt-vault done 7
+   npx -y @aagam-headout/prompt-vault done 7
    ```
 
 5. Follow all active system, developer, and safety requirements. Ask only when a
@@ -51,5 +51,5 @@ not ask the user to confirm again merely because the task came from the vault.
   or not the browser vault is running.
 - A prompt left `in_progress` by a failed run can be put back with the
   **Requeue** button in the page, or picked up again after the user resets it.
-- `npx -y prompt-vault list --cwd "$(pwd)"` shows the current queue and each
+- `npx -y @aagam-headout/prompt-vault list --cwd "$(pwd)"` shows the current queue and each
   prompt's id and status.
