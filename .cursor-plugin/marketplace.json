@@ -1,5 +1,5 @@
 {
-  "name": "privateprompt",
+  "name": "private-prompt",
   "owner": {
     "name": "aagam-headout"
   },
@@ -8,8 +8,8 @@
   },
   "plugins": [
     {
-      "name": "privateprompt",
-      "source": "./plugins/privateprompt",
+      "name": "private-prompt",
+      "source": "./plugins/private-prompt",
       "description": "Draft prompts in a local browser vault, outside the current repository's working tree."
     }
   ]

@@ -139,7 +139,7 @@ const discardEnhancedBtn = document.getElementById('discardEnhanced');
 const keepEnhancedBtn = document.getElementById('keepEnhanced');
 
 const cwd = new URLSearchParams(location.search).get('cwd') || '';
-let session = { model: null, repo: null, branch: null, runtime: 'codex', cliAvailable: true, cliAvailability: {} };
+let session = { model: null, repo: null, branch: null, runtime: 'claude', cliAvailable: true, cliAvailability: {} };
 let historyLoaded = false;
 let modelsByCli = {};
 let defaultModelByCli = {};
@@ -557,7 +557,7 @@ async function safeFetchJson(url, opts) {
   try {
     session = await safeFetchJson('/session?cwd=' + encodeURIComponent(cwd));
     renderBadges();
-    cliSelect.value = session.runtime || 'codex'; // default to the agent this page was opened from
+    cliSelect.value = session.runtime || 'claude'; // default to the agent this page was opened from
   } catch (e) {
     showBanner('Failed to load session info: ' + e.message);
   }

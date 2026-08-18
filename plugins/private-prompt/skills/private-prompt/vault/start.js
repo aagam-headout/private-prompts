@@ -12,7 +12,7 @@
 //   node start.js --port 9000    # non-default port
 //   node start.js --stop         # stop the running server
 //
-// Honors PRIVATEPROMPT_PORT, PRIVATEPROMPT_RUNTIME, and PRIVATEPROMPT_DATA_DIR.
+// Honors PP_PORT, PP_RUNTIME, and PP_DATA_DIR.
 "use strict";
 
 const http = require("http");
@@ -21,7 +21,7 @@ const fs = require("fs");
 const { spawn } = require("child_process");
 
 const VAULT = __dirname;
-const SERVER = path.join(VAULT, "privateprompt-server.js");
+const SERVER = path.join(VAULT, "private-prompt-server.js");
 const RUNTIMES = new Set(["claude", "codex", "cursor"]);
 
 function usage() {
@@ -33,28 +33,33 @@ function parseArgs(argv) {
   const opts = { cwd: process.cwd(), open: true, stop: false, port: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === "--cwd") { opts.cwd = argv[++i] || process.cwd(); }
-    else if (arg === "--port") { opts.port = Number(argv[++i]); }
+    if (arg === "--cwd") { opts.cwd = path.resolve(argv[++i] || process.cwd()); }
+    else if (arg === "--port") {
+      const raw = argv[++i];
+      opts.port = Number(raw);
+      if (!Number.isInteger(opts.port) || opts.port < 1 || opts.port > 65535) {
+        console.error(`private-prompt: --port needs an integer 1-65535, got "${raw}"`);
+        process.exit(2);
+      }
+    }
     else if (arg === "--no-open") { opts.open = false; }
     else if (arg === "--stop") { opts.stop = true; }
     else if (arg === "-h" || arg === "--help") { usage(); process.exit(0); }
-    else { console.error(`privateprompt: unknown option ${arg}`); process.exit(2); }
+    else { console.error(`private-prompt: unknown option ${arg}`); process.exit(2); }
   }
   return opts;
 }
 
-// Which agent runtime owns the data directory. Hosts do not export their
-// plugin-root variables into child processes, so an explicit
-// PRIVATEPROMPT_RUNTIME is the only signal that can be trusted here; otherwise
-// infer it from where this copy of the plugin is installed.
+// Which CLI the page preselects for Enhance. Storage does not depend on this —
+// there is one vault for every agent — so an install-path guess is enough, and
+// PP_RUNTIME overrides it.
 function detectRuntime() {
-  const explicit = process.env.PRIVATEPROMPT_RUNTIME;
+  const explicit = process.env.PP_RUNTIME;
   if (explicit && RUNTIMES.has(explicit)) return explicit;
   const where = VAULT.replace(/\\/g, "/");
-  if (where.includes("/.claude/")) return "claude";
   if (where.includes("/.cursor/")) return "cursor";
   if (where.includes("/.codex/")) return "codex";
-  return "codex";
+  return "claude";
 }
 
 function getJson(port, pathname, method = "GET") {
@@ -91,26 +96,26 @@ function openInBrowser(url) {
 
 (async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const envPort = Number(process.env.PRIVATEPROMPT_PORT);
-  const port = Number.isInteger(opts.port) && opts.port > 0 ? opts.port
-    : Number.isInteger(envPort) && envPort > 0 ? envPort : 8974;
+  const envPort = Number(process.env.PP_PORT);
+  const port = opts.port !== null ? opts.port
+    : Number.isInteger(envPort) && envPort > 0 && envPort < 65536 ? envPort : 8974;
 
   if (opts.stop) {
     // Ask the server to exit over the same loopback channel — no pkill or
     // taskkill, so this behaves the same on every platform.
     const health = await getJson(port, "/health");
-    if (!health) { console.log("privateprompt: nothing to stop"); return; }
+    if (!health) { console.log("private-prompt: nothing to stop"); return; }
     await getJson(port, "/shutdown", "POST");
     for (let i = 0; i < 20; i++) {
       if (!(await getJson(port, "/health"))) break;
       await sleep(100);
     }
-    console.log("privateprompt: stopped");
+    console.log("private-prompt: stopped");
     return;
   }
 
   if (!fs.existsSync(SERVER)) {
-    console.error(`privateprompt: server missing at ${SERVER}`);
+    console.error(`private-prompt: server missing at ${SERVER}`);
     process.exit(1);
   }
 
@@ -118,16 +123,12 @@ function openInBrowser(url) {
   let health = await getJson(port, "/health");
 
   if (health) {
-    // A different runtime means a different data directory, so reusing it would
-    // read and write the wrong vault.
-    if (health.runtime && health.runtime !== runtime) {
-      console.error(`privateprompt: port ${port} is serving runtime "${health.runtime}", not "${runtime}" — stop it first (node start.js --stop)`);
-      process.exit(1);
-    }
-    console.log(`privateprompt: already running on port ${port}`);
+    // Every runtime shares one vault, so an already-running server is always the
+    // right one to reuse — the runtime only decides the Enhance defaults.
+    console.log(`private-prompt: already running on port ${port}`);
   } else {
     const child = spawn(process.execPath, [SERVER], {
-      env: { ...process.env, PRIVATEPROMPT_RUNTIME: runtime, PRIVATEPROMPT_PORT: String(port) },
+      env: { ...process.env, PP_RUNTIME: runtime, PP_PORT: String(port) },
       stdio: "ignore",
       detached: true,
     });
@@ -139,15 +140,17 @@ function openInBrowser(url) {
       await sleep(100);
     }
     if (!health) {
-      console.error(`privateprompt: server did not come up on port ${port}`);
+      // Either the server failed to boot, or something that is not this server
+      // already holds the port — the health probe cannot tell those apart.
+      console.error(`private-prompt: nothing answered /health on port ${port} — it may be held by another program (try --port)`);
       process.exit(1);
     }
-    console.log(`privateprompt: started on port ${port} (runtime: ${runtime})`);
+    console.log(`private-prompt: started on port ${port} (runtime: ${runtime})`);
   }
 
   const url = `http://127.0.0.1:${port}/?cwd=${encodeURIComponent(opts.cwd)}`;
   console.log(url);
   if (opts.open && !openInBrowser(url)) {
-    console.log("privateprompt: open the URL above in your browser");
+    console.log("private-prompt: open the URL above in your browser");
   }
 })();

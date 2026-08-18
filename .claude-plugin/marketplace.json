@@ -1,15 +1,15 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "privateprompt",
+  "name": "private-prompt",
   "description": "Local browser prompt vault: keep drafts out of the repository and let Claude read the saved file as reference context.",
   "owner": {
     "name": "aagam-headout"
   },
   "plugins": [
     {
-      "name": "privateprompt",
+      "name": "private-prompt",
       "description": "Draft prompts in a local browser vault and give Claude the saved file as reference context.",
-      "source": "./plugins/privateprompt",
+      "source": "./plugins/private-prompt",
       "category": "productivity"
     }
   ]
