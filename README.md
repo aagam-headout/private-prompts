@@ -77,9 +77,14 @@ export PP_PLUGIN_ROOT=/path/to/private-prompt
 
 The page and saved files are local and outside the current project. However,
 when an agent reads a saved draft or you click **Enhance**, its content is
-sent to the configured agent CLI/model provider. The unauthenticated server is
-limited to `127.0.0.1`, so other processes under the same local account can
-access it while it is running.
+sent to the configured agent CLI/model provider.
+
+The server listens on `127.0.0.1` only, and refuses requests whose `Host` isn't
+loopback or whose `Origin` is another site — so a site you happen to have open
+can't read your drafts by DNS rebinding, or POST to `/save`, `/history/delete`,
+`/enhance`, or `/shutdown`. Beyond that it is unauthenticated: any process under
+your own account can reach it while it runs, as it can already read the vault
+files on disk.
 
 ## Requirements
 
@@ -112,9 +117,14 @@ node <plugin-root>/skills/private-prompt/vault/start.js --no-open  # just print 
 node <plugin-root>/skills/private-prompt/vault/start.js --stop
 ```
 
-The launcher is pure Node — no bash, `curl`, `nohup`, `pkill`, or `open` — so it
-behaves the same under Claude Code, Codex, Cursor, or a plain terminal, on macOS,
-Linux, and Windows. Re-running it is safe: an already-running server is reused.
+The launcher is pure Node — no bash, `curl`, `nohup`, or `pkill` — so it behaves
+the same under Claude Code, Codex, Cursor, or a plain terminal, on macOS, Linux,
+and Windows. Opening the browser is the one exception: it calls the platform
+opener (`open` / `xdg-open` / `start`) and just prints the URL when there isn't
+one. Re-running it is safe — an already-running vault is reused, and a port held
+by a *different* vault install (older version, or a different `PP_DATA_DIR`) is
+refused rather than reused, so saves never land where the skills won't read them.
+`--stop` fails loudly, with the pid, if the server is still up afterwards.
 
 ## License
 

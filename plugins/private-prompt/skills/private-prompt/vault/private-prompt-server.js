@@ -139,18 +139,36 @@ function gitBranch(cwd) {
   });
 }
 
+// The hash input has to be the same string the skills compute in shell, so
+// resolve symlinks and drop trailing separators here: a shell's `$(pwd)` is the
+// logical path while `process.cwd()` is the physical one, and hashing them raw
+// would file the same project under two different names. Skills use `pwd -P`.
+function normalizeCwd(cwd) {
+  if (!cwd || typeof cwd !== "string" || !cwd.trim()) return null;
+  const trimmed = cwd.trim().replace(/[/\\]+$/, "") || cwd.trim();
+  try {
+    return fs.realpathSync(trimmed);
+  } catch {
+    return trimmed; // path gone or unreadable — a stable name still beats none
+  }
+}
+
+function cwdHash(cwd) {
+  return crypto.createHash("sha1").update(cwd).digest("hex").slice(0, 12);
+}
+
 // One prompt file per repo/cwd so concurrent /private-prompt calls from
 // different projects never clobber each other. No cwd -> shared scratch file.
 function promptFileFor(cwd) {
-  if (!cwd || typeof cwd !== "string" || !cwd.trim()) return NO_CWD_PROMPT_FILE;
-  const hash = crypto.createHash("sha1").update(cwd).digest("hex").slice(0, 12);
-  return path.join(PROMPTS_DIR, `${hash}.md`);
+  const resolved = normalizeCwd(cwd);
+  if (!resolved) return NO_CWD_PROMPT_FILE;
+  return path.join(PROMPTS_DIR, `${cwdHash(resolved)}.md`);
 }
 
 function historyFileFor(cwd) {
-  if (!cwd || typeof cwd !== "string" || !cwd.trim()) return NO_CWD_HISTORY_FILE;
-  const hash = crypto.createHash("sha1").update(cwd).digest("hex").slice(0, 12);
-  return path.join(PROMPTS_DIR, `${hash}.history.jsonl`);
+  const resolved = normalizeCwd(cwd);
+  if (!resolved) return NO_CWD_HISTORY_FILE;
+  return path.join(PROMPTS_DIR, `${cwdHash(resolved)}.history.jsonl`);
 }
 
 function readHistoryLines(cwd) {
@@ -284,7 +302,39 @@ function enhanceWithAgent(instruction, cwd, callback) {
 
 // ---------- server ----------
 
+// Binding to 127.0.0.1 keeps other machines out, but it does not keep *web
+// pages* out: a site the user is browsing can POST to this port, and DNS
+// rebinding (a hostname that resolves to 127.0.0.1) would let it read /load
+// too. Both attacks carry a foreign Host or Origin, so check them. Same-account
+// local processes are still trusted — they can read the vault files directly.
+const ALLOWED_HOSTS = new Set([
+  `127.0.0.1:${PORT}`,
+  `localhost:${PORT}`,
+  `[::1]:${PORT}`,
+]);
+
+function rejectReason(req) {
+  const host = String(req.headers.host || "").toLowerCase();
+  if (!ALLOWED_HOSTS.has(host)) return `unexpected Host header (${host || "absent"})`;
+  // Sent by every current browser; absent for curl and other non-browser clients.
+  const site = req.headers["sec-fetch-site"];
+  if (site && site !== "same-origin" && site !== "none") return `cross-site request (${site})`;
+  const origin = req.headers.origin;
+  if (origin) {
+    let originHost = "";
+    try { originHost = new URL(origin).host.toLowerCase(); } catch { originHost = ""; }
+    if (!ALLOWED_HOSTS.has(originHost)) return `unexpected Origin (${origin})`;
+  }
+  return null;
+}
+
 const server = http.createServer(async (req, res) => {
+  const reject = rejectReason(req);
+  if (reject) {
+    console.error(`[private-prompt] refused ${req.method} ${req.url}: ${reject}`);
+    return send(res, 403, { error: `refused: ${reject}` });
+  }
+
   let url;
   try {
     url = new URL(req.url, "http://localhost");
@@ -305,7 +355,10 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { models: MODEL_IDS, default: DEFAULT_ENHANCE_MODEL, byCli: ALL_MODEL_IDS, defaultByCli: DEFAULT_MODEL_FOR });
     }
     if (req.method === "GET" && url.pathname === "/health") {
-      return send(res, 200, { ok: true, pid: process.pid, runtime: RUNTIME });
+      // `server` and `dataDir` let the launcher tell "our vault" from "some other
+      // vault install on this port" — reusing the wrong one silently files saves
+      // where the skills do not read them.
+      return send(res, 200, { ok: true, pid: process.pid, runtime: RUNTIME, server: __filename, dataDir: DATA_DIR });
     }
 
     if (req.method === "POST" && url.pathname === "/shutdown") {
@@ -343,7 +396,7 @@ const server = http.createServer(async (req, res) => {
         modelAlias,
         runtime: RUNTIME,
         cwd: cwd || null,
-        repo: cwd ? path.basename(cwd.replace(/\/+$/, "")) || null : null,
+        repo: normalizeCwd(cwd) ? path.basename(normalizeCwd(cwd)) || null : null,
         branch,
         cliAvailable,
         cliAvailability: { claude: claudeAvailable, codex: codexAvailable, cursor: cursorAvailable },

@@ -34,7 +34,9 @@ repository and stable across plugin updates.
    if [ -n "${PP_PLUGIN_ROOT:-}" ]; then
      private_prompt_vault="$PP_PLUGIN_ROOT/skills/private-prompt/vault"
    else
-     private_prompt_found="$(find "$HOME/.claude/plugins" "$HOME/.cursor/plugins" "$HOME/.codex/plugins" "$HOME/.agents" -maxdepth 8 -type f -path '*private-prompt/vault/start.js' 2>/dev/null | sort -r | head -1)"
+     # Newest by version, not lexical order: plugin caches keep versions side by
+     # side, and plain `sort -r` prefers 1.3.0 over 1.10.0.
+     private_prompt_found="$(find "$HOME/.claude/plugins" "$HOME/.cursor/plugins" "$HOME/.codex/plugins" "$HOME/.agents" -maxdepth 12 -type f -path '*private-prompt/vault/start.js' 2>/dev/null | sort -Vr | head -1)"
      [ -n "$private_prompt_found" ] && private_prompt_vault="$(dirname "$private_prompt_found")"
    fi
    if [ ! -f "$private_prompt_vault/start.js" ]; then
@@ -43,9 +45,12 @@ repository and stable across plugin updates.
    fi
    node "$private_prompt_vault/start.js" --cwd "$(pwd)"
    ```
-   `start.js` is pure Node — no bash, `curl`, `nohup`, `pkill`, or `open`
-   required — and idempotent: it reuses a server that is already up, polls
-   `/health` until ready, and opens the page with the project directory attached
+   `start.js` is pure Node — no bash, `curl`, `nohup`, or `pkill` required (it
+   does shell out to the platform browser opener, and prints the URL when that
+   is unavailable) — and idempotent: it reuses a server that is already up (and
+   refuses a port held by a different vault install rather than saving into the
+   wrong place), polls `/health` until ready, then opens the page with the
+   project directory attached
    (so the page shows project and Git-branch context and keeps each project's
    draft separate). It prints the URL — pass that to the user if no browser
    opened. `--no-open` starts without opening; `--stop` stops the server;
@@ -67,7 +72,11 @@ repository and stable across plugin updates.
    determined by the project directory — one vault for every agent, no runtime
    guessing:
    ```sh
-   printf '%s/prompts/%s.md\n' "${PP_DATA_DIR:-$HOME/.private-prompt}" "$(printf %s "$(pwd)" | shasum | cut -c1-12)"
+   # pwd -P (not pwd): the server hashes the symlink-resolved path, so the
+   # logical path would hash to a different, empty file. sha1sum where shasum
+   # is absent (slim Linux images ship no perl).
+   private_prompt_sha() { if command -v shasum >/dev/null 2>&1; then shasum; else sha1sum; fi; }
+   printf '%s/prompts/%s.md\n' "${PP_DATA_DIR:-$HOME/.private-prompt}" "$(printf %s "$(pwd -P)" | private_prompt_sha | cut -c1-12)"
    ```
    That file's content is the actual reference. If it starts with `## Original`
    and `## Enhanced` headings (from **Save both versions**), treat the text under
@@ -89,9 +98,12 @@ repository and stable across plugin updates.
 - If the user edits Original after enhancing it, the page flags the Enhanced
   draft as stale and asks whether to delete it before saving, so the file never
   pairs a new Original with an Enhanced built from older text.
-- The server has no authentication and binds only to `127.0.0.1`. Other
-  processes under the same local account can reach it, including its
-  `POST /shutdown` route.
+- The server binds only to `127.0.0.1` and rejects any request whose `Host` is
+  not loopback or whose `Origin` is another site, so a web page the user happens
+  to be browsing cannot read `/load` (DNS rebinding) or hit `/save`,
+  `/history/delete`, `/enhance`, or `/shutdown`. There is no authentication
+  beyond that: other processes under the same local account can reach every
+  route, as they can already read the vault files directly.
 - To stop the server: `node vault/start.js --stop`.
 - `PP_DATA_DIR` moves the vault, `PP_PORT` changes the port (default `8974`),
   `PP_RUNTIME` (`claude` / `codex` / `cursor`) picks which CLI the Enhance panel

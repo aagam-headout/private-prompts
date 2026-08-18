@@ -12,7 +12,10 @@ from the vault.
 1. Resolve the current project's saved prompt path. It is fully determined by
    the project directory — one vault for every agent, no runtime guessing:
    ```sh
-   private_prompt_file="${PP_DATA_DIR:-$HOME/.private-prompt}/prompts/$(printf %s "$(pwd)" | shasum | cut -c1-12).md"
+   # pwd -P matches the symlink-resolved path the server hashes; sha1sum covers
+   # systems without shasum.
+   private_prompt_sha() { if command -v shasum >/dev/null 2>&1; then shasum; else sha1sum; fi; }
+   private_prompt_file="${PP_DATA_DIR:-$HOME/.private-prompt}/prompts/$(printf %s "$(pwd -P)" | private_prompt_sha | cut -c1-12).md"
    test -s "$private_prompt_file" && printf '%s\n' "$private_prompt_file"
    ```
 
