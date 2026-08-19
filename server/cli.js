@@ -1,29 +1,29 @@
 #!/usr/bin/env node
 // prompt-vault — a local prompt queue for coding agents.
 //
-//   npx agent-prompt-vault                 start the vault (if needed) and open it
-//   npx agent-prompt-vault --no-open       start only, print the URL
-//   npx agent-prompt-vault --stop          stop the running vault
+//   npx -y agent-prompt-vault                 start the vault (if needed) and open it
+//   npx -y agent-prompt-vault --no-open       start only, print the URL
+//   npx -y agent-prompt-vault --stop          stop the running vault
 //
-//   npx agent-prompt-vault add "text"                 queue a new prompt
-//   npx agent-prompt-vault add < file.txt             queue a prompt read from stdin
-//   npx agent-prompt-vault add --each-line < tasks.txt  queue one prompt per line
-//   npx agent-prompt-vault next            claim the next pending prompt
-//   npx agent-prompt-vault next 2          claim the next 2
-//   npx agent-prompt-vault next --all      claim every pending prompt
-//   npx agent-prompt-vault done 7          mark prompt 7 done
-//   npx agent-prompt-vault done 7 8 9      mark several done
-//   npx agent-prompt-vault reset           hand every claimed prompt back to the queue
-//   npx agent-prompt-vault reset 7         hand prompt 7 back
-//   npx agent-prompt-vault list            show this project's queue
-//   npx agent-prompt-vault list --pending-only     show only pending prompts
-//   npx agent-prompt-vault peek             show the next pending prompt, without claiming it
-//   npx agent-prompt-vault peek 3           show the next 3 pending prompts
-//   npx agent-prompt-vault add --template refactor   queue a saved prompt skeleton
-//   npx agent-prompt-vault template save refactor "text"  save a reusable skeleton
-//   npx agent-prompt-vault template list             list saved skeletons
-//   npx agent-prompt-vault template show refactor    print a saved skeleton
-//   npx agent-prompt-vault template remove refactor  delete a saved skeleton
+//   npx -y agent-prompt-vault add "text"                 queue a new prompt
+//   npx -y agent-prompt-vault add < file.txt             queue a prompt read from stdin
+//   npx -y agent-prompt-vault add --each-line < tasks.txt  queue one prompt per line
+//   npx -y agent-prompt-vault next            claim the next pending prompt
+//   npx -y agent-prompt-vault next 2          claim the next 2
+//   npx -y agent-prompt-vault next --all      claim every pending prompt
+//   npx -y agent-prompt-vault done 7          mark prompt 7 done
+//   npx -y agent-prompt-vault done 7 8 9      mark several done
+//   npx -y agent-prompt-vault reset           hand every claimed prompt back to the queue
+//   npx -y agent-prompt-vault reset 7         hand prompt 7 back
+//   npx -y agent-prompt-vault list            show this project's queue
+//   npx -y agent-prompt-vault list --pending-only     show only pending prompts
+//   npx -y agent-prompt-vault peek             show the next pending prompt, without claiming it
+//   npx -y agent-prompt-vault peek 3           show the next 3 pending prompts
+//   npx -y agent-prompt-vault add --template refactor   queue a saved prompt skeleton
+//   npx -y agent-prompt-vault template save refactor "text"  save a reusable skeleton
+//   npx -y agent-prompt-vault template list             list saved skeletons
+//   npx -y agent-prompt-vault template show refactor    print a saved skeleton
+//   npx -y agent-prompt-vault template remove refactor  delete a saved skeleton
 //
 // `next`, `done`, `list`, and `peek` talk to the database directly, so they
 // work whether or not the browser vault is running.
@@ -278,7 +278,7 @@ async function commandOpen(opts, port) {
     const mismatch = identityMismatch(running);
     if (mismatch) {
       console.error(`prompt-vault: refusing to reuse port ${port} — ${mismatch}`);
-      die(`stop it (\`npx agent-prompt-vault --stop --port ${port}\`, or kill ${running.pid}) or pick another port with --port`);
+      die(`stop it (\`npx -y agent-prompt-vault --stop --port ${port}\`, or kill ${running.pid}) or pick another port with --port`);
     }
     console.log(`prompt-vault: already running on port ${port}`);
   } else {
@@ -421,8 +421,8 @@ function commandNext(opts) {
   printPrompts(claimed, opts);
   if (!opts.json) {
     const ids = claimed.map((p) => p.id).join(" ");
-    console.log(`Mark each done as you finish it: npx agent-prompt-vault done <id>   (claimed: ${ids})`);
-    console.log(`If you cannot finish them: npx agent-prompt-vault reset ${ids}`);
+    console.log(`Mark each done as you finish it: npx -y agent-prompt-vault done <id>   (claimed: ${ids})`);
+    console.log(`If you cannot finish them: npx -y agent-prompt-vault reset ${ids}`);
   }
 }
 

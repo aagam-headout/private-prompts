@@ -7,8 +7,8 @@ import tailwindcss from "@tailwindcss/vite";
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 // The built UI is committed as dist/ and shipped inside the npm package, so a
-// user running `npx prompt-vault` never needs a build step or a network fetch
-// beyond the package download itself.
+// user running `npx -y agent-prompt-vault` never needs a build step or a
+// network fetch beyond the package download itself.
 export default defineConfig({
   root: "ui",
   // Relative asset URLs — the server hands dist/ back from "/", but this keeps
