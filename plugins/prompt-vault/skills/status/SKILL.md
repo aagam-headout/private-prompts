@@ -13,7 +13,7 @@ falls back to `npx`. Shell state does not survive between tool calls, so repeat
 it each time rather than defining it once:
 
 ```sh
-pv() { if command -v prompt-vault >/dev/null 2>&1; then prompt-vault "$@"; else npx -y agent-prompt-vault "$@"; fi; }
+pv() { if command -v agent-prompt-vault >/dev/null 2>&1; then agent-prompt-vault "$@"; else npx -y agent-prompt-vault "$@"; fi; }
 ```
 
 ## Steps
@@ -21,7 +21,7 @@ pv() { if command -v prompt-vault >/dev/null 2>&1; then prompt-vault "$@"; else 
 1. Get this project's queue as JSON:
 
    ```sh
-   pv() { if command -v prompt-vault >/dev/null 2>&1; then prompt-vault "$@"; else npx -y agent-prompt-vault "$@"; fi; }
+   pv() { if command -v agent-prompt-vault >/dev/null 2>&1; then agent-prompt-vault "$@"; else npx -y agent-prompt-vault "$@"; fi; }
    pv list --json
    ```
 
