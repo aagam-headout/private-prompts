@@ -2,7 +2,7 @@
   "name": "prompt-vault",
   "displayName": "Prompt Vault",
   "description": "Queue prompts in a local browser page, outside the current repository's working tree, and work through them one at a time.",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "author": {
     "name": "aagam-headout"
   },

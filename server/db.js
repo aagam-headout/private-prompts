@@ -183,6 +183,33 @@ export function add({ project, text }) {
   return get(Number(lastInsertRowid));
 }
 
+// Same insert as `add`, repeated for each line of a bulk import, but in one
+// transaction — so a failure partway through leaves nothing half-queued, and
+// two concurrent bulk imports can't interleave their MAX(position) reads into
+// duplicate positions the way N independent add() calls could.
+export function addMany(project, texts) {
+  const proj = normalizeProject(project);
+  if (!proj) throw new Error("missing project path");
+  const bodies = texts.map((text) => (typeof text === "string" ? text.trim() : ""));
+  if (bodies.some((body) => !body)) throw new Error("empty prompt — nothing to queue");
+  const d = open();
+  d.exec("BEGIN IMMEDIATE");
+  try {
+    const { next } = d
+      .prepare("SELECT COALESCE(MAX(position), 0) + 1 AS next FROM prompts WHERE project = ?")
+      .get(proj);
+    const insert = d.prepare(
+      "INSERT INTO prompts (project, text, status, position, created_at) VALUES (?, ?, 'pending', ?, ?)"
+    );
+    const ids = bodies.map((body, i) => Number(insert.run(proj, body, next + i, Date.now()).lastInsertRowid));
+    d.exec("COMMIT");
+    return ids.map((id) => get(id));
+  } catch (err) {
+    d.exec("ROLLBACK");
+    throw err;
+  }
+}
+
 export function edit(id, text) {
   const body = typeof text === "string" ? text.trim() : "";
   if (!body) throw new Error("empty prompt — nothing to save");

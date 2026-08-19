@@ -17,46 +17,25 @@ npx -y agent-prompt-vault
 That starts a loopback-only server and opens the queue for the current
 directory. Add prompts, then in your agent run `/prompt-vault:next`.
 
-## Commands
+## Docs
 
-The CLI is the whole interface. `next`, `done`, and `list` read and write the
-database directly, so they work whether or not the browser page is running.
-
-Install it once so the commands below are short:
-
-```bash
-npm install -g agent-prompt-vault
-```
-
-```bash
-prompt-vault                  # start the vault (if needed) and open it
-prompt-vault --no-open        # start only, print the URL
-prompt-vault --stop           # stop the running vault
-
-prompt-vault next             # claim the next pending prompt
-prompt-vault next 2           # claim the next two
-prompt-vault next --all       # claim everything pending
-prompt-vault done 7           # mark prompt 7 done
-prompt-vault done 7 8 9       # mark several done
-prompt-vault reset 7          # hand prompt 7 back to the queue
-prompt-vault reset            # hand back every claimed prompt in this project
-prompt-vault list             # show this project's queue
-```
-
-Flags: `--cwd <path>` (defaults to the current directory), `--port <n>`,
-`--json` for machine-readable output on the queue commands, `--force` to let
-`done` or `reset` touch a prompt belonging to another project.
-
-A working directory inside a git repository is tagged with the repository root,
-so a prompt queued from the root is claimed by an agent running in `src/` — one
-queue per project, not per directory. Queues that were already keyed to a
-subdirectory keep working as they are.
+- **[Commands](docs/commands.md)** — the full CLI (`add`, `next`, `done`,
+  `list`, `peek`, `reset`, `template`) and flags, plus the plugin commands.
+  `--help`/`-h` on any command prints this same reference from the CLI itself.
+- **[How it works](docs/how-it-works.md)** — the schema, project scoping,
+  privacy, and configuration (`PV_DATA_DIR`, `PV_PORT`).
+- **[Development](docs/development.md)** — running from source, tests,
+  project layout.
 
 ## Plugin commands
 
 - **`/prompt-vault:open`** — start the vault and open the queue page.
 - **`/prompt-vault:next`** — claim the next queued prompt (or a count, or all of
   them), carry it out, and mark it done.
+- **`/prompt-vault:queue-plan`** — split a plan, spec, or task ledger into
+  self-contained prompts and load them into the queue.
+- **`/prompt-vault:status`** — report a quick pending/in-progress/done count
+  for this project's queue, without opening the browser page.
 
 ### Install
 
@@ -88,68 +67,14 @@ Open **Cursor Settings**, find the plugins section, add this repo
 
 The skills only shell out to `npx -y agent-prompt-vault`, the package published from
 this repository, so an agent following a skill always resolves the same
-published name. The plugin itself is two markdown files; there is nothing to
+published name. The plugin itself is markdown files; there is nothing to
 keep in sync between the plugin and the app, and publishing a new version
 reaches users without touching the skills.
-
-## How it works
-
-Every prompt is one row in `~/.prompt-vault/vault.db`, tagged with the absolute
-project directory it was queued from:
-
-| column | meaning |
-| --- | --- |
-| `id` | the number you pass to `done` |
-| `project` | absolute path, symlink-resolved |
-| `text` | the prompt |
-| `status` | `pending` → `in_progress` → `done` |
-| `created_at`, `done_at` | timestamps |
-
-The queue is global but project-scoped in use: the page can show every project
-at once, while `next` only ever claims prompts belonging to the directory it
-was run in. Claiming happens inside a transaction, so two agents — or one agent
-run twice — can never pick up the same prompt.
-
-Done rows stay in the table. That is the history; there is no separate archive.
-
-## Privacy
-
-The page and the database are local and outside the current project. The server
-binds to `127.0.0.1` only and refuses requests whose `Host` isn't loopback or
-whose `Origin` is another site, so a site you happen to have open can't read or
-write your queue by DNS rebinding. Beyond that it is unauthenticated: any
-process under your own account can reach it while it runs, as it can already
-read the database file directly.
-
-Queued prompts are sent to your agent's model provider at the moment the agent
-claims and acts on them — the same as if you had typed them into chat.
 
 ## Requirements
 
 Node.js 22.5 or newer. The vault uses Node's built-in `node:sqlite`, so it has
 no runtime dependencies at all — nothing to compile, nothing to install.
-
-## Configuration
-
-- `PV_DATA_DIR` — move the vault (default `~/.prompt-vault`).
-- `PV_PORT` — port the local server binds to (default `8974`).
-
-## Development
-
-```bash
-npm install
-npm start          # API + built UI on :8974
-npm run dev        # Vite dev server with hot reload, proxying /api to :8974
-npm run build      # rebuild dist/
-```
-
-The UI is built with Vite (React, Tailwind, shadcn/ui) and Geist is bundled
-locally, so a running vault makes no external network requests.
-
-`dist/` is **not** in git — the CLI resolves from the npm registry, so the built
-UI only has to exist in the tarball, not in the repository. The
-`prepack` script rebuilds it automatically on `npm pack` and `npm publish`,
-which also makes it impossible to publish a stale bundle.
 
 ## License
 

@@ -6,6 +6,8 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { silenceSqliteWarning } from "./quiet.js";
 
 silenceSqliteWarning();
@@ -16,6 +18,7 @@ process.env.PV_DATA_DIR = DATA_DIR;
 // Both modules read PV_DATA_DIR at import time, so the env has to be set first.
 const db = await import("./db.js");
 const { createServer } = await import("./server.js");
+const templates = await import("./templates.js");
 
 test.after(() => {
   db.close();
@@ -168,6 +171,16 @@ test("setStatus clears done_at on the way back out of done", () => {
   assert.equal(db.setStatus(999999, "done"), null);
 });
 
+test("list --status pending filters to the queue order peek/next would claim", () => {
+  reset();
+  const project = db.normalizeProject(PROJECT);
+  const ids = ["a", "b", "c"].map((text) => db.add({ project: PROJECT, text }).id);
+  db.claim(PROJECT, 1); // ids[0] becomes in_progress
+  const pending = db.list({ project, status: "pending" });
+  assert.deepEqual(pending.map((p) => p.id), [ids[1], ids[2]]);
+  assert.ok(pending.every((p) => p.status === "pending"));
+});
+
 test("list caps the done pile, newest first, and -1 lifts the cap", () => {
   reset();
   const project = db.normalizeProject(PROJECT);
@@ -184,6 +197,92 @@ test("list caps the done pile, newest first, and -1 lifts the cap", () => {
   // Pending and in_progress are never capped away.
   const live = db.add({ project: PROJECT, text: "live" });
   assert.ok(db.list({ project }).some((p) => p.id === live.id));
+});
+
+// ---------- templates ----------
+
+test("template save/read/list/remove round-trip", () => {
+  assert.deepEqual(templates.list(), []);
+  templates.save("refactor", "  Refactor this for clarity.  ");
+  assert.equal(templates.read("refactor"), "Refactor this for clarity.");
+  assert.deepEqual(templates.list(), ["refactor"]);
+  templates.save("bugfix", "Fix the bug.");
+  assert.deepEqual(templates.list(), ["bugfix", "refactor"]); // sorted
+  assert.equal(templates.remove("refactor"), true);
+  assert.equal(templates.remove("refactor"), false); // already gone
+  assert.deepEqual(templates.list(), ["bugfix"]);
+  templates.remove("bugfix");
+});
+
+test("template read rejects a missing name, save rejects empty text", () => {
+  assert.throws(() => templates.read("nope"), /no template named/);
+  assert.throws(() => templates.save("x", "   "), /empty template/);
+});
+
+// ---------- cli (spawned, to exercise parseArgs itself) ----------
+
+const CLI = fileURLToPath(new URL("./cli.js", import.meta.url));
+
+function cli(args, opts = {}) {
+  try {
+    const stdout = execFileSync(process.execPath, [CLI, ...args, "--cwd", PROJECT], {
+      env: { ...process.env, PV_DATA_DIR: DATA_DIR },
+      encoding: "utf8",
+      ...opts,
+    });
+    return { status: 0, stdout };
+  } catch (err) {
+    return { status: err.status, stdout: err.stdout, stderr: err.stderr };
+  }
+}
+
+test("add --template \"\" fails loud instead of queueing the empty flag's value as a literal prompt", () => {
+  reset();
+  const result = cli(["add", "--template", "", "hello world"]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /invalid template name/);
+  assert.deepEqual(db.list({ project: db.normalizeProject(PROJECT) }), []);
+});
+
+test("--pending-only and a conflicting --status refuse rather than pick one silently", () => {
+  const a = cli(["list", "--status", "done", "--pending-only"]);
+  const b = cli(["list", "--pending-only", "--status", "done"]);
+  assert.notEqual(a.status, 0);
+  assert.notEqual(b.status, 0);
+  assert.match(a.stderr, /conflicts/);
+  assert.match(b.stderr, /conflicts/);
+});
+
+test("--status is rejected on commands other than list, instead of being silently ignored", () => {
+  const result = cli(["peek", "--status", "done"]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /only apply to `list`/);
+});
+
+test("template show/remove refuse trailing arguments instead of dropping them", () => {
+  reset();
+  templates.save("t", "body");
+  const result = cli(["template", "show", "t", "extra"]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /takes no arguments/);
+  templates.remove("t");
+});
+
+test("template remove deletes a saved template, and reports a miss without erroring", () => {
+  templates.save("gone", "body");
+  const removed = cli(["template", "remove", "gone"]);
+  assert.equal(removed.status, 0);
+  assert.match(removed.stdout, /removed template "gone"/);
+  assert.deepEqual(templates.list(), []);
+
+  const again = cli(["template", "remove", "gone"]);
+  assert.equal(again.status, 0);
+  assert.match(again.stdout, /no template named "gone"/);
+});
+
+test("template names cannot escape the templates directory", () => {
+  assert.throws(() => templates.save("../evil", "text"), /invalid template name/);
+  assert.throws(() => templates.read("../../etc/passwd"), /invalid template name/);
 });
 
 // ---------- server ----------

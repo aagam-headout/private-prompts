@@ -231,7 +231,7 @@ export default function App() {
             <div className="mx-auto w-full max-w-3xl px-4 sm:px-6">
               {/* gap-2: at gap-1 the two tabs read as one control rather than
                   two separate targets. */}
-              <TabsList variant="line" className="h-9 w-full mt-1 justify-start gap-2 p-0">
+              <TabsList variant="line" className="h-9 w-full mt-1.5 justify-start gap-2 p-0">
                 <TabsTrigger value="queue" className={tabClass}>
                   <ListTodo />
                   Queue

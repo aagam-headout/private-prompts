@@ -1,4 +1,4 @@
-import { Folder, Inbox, Layers } from "lucide-react";
+import { Folder, Layers, Lock } from "lucide-react";
 import ThemeToggle from "./ThemeToggle.jsx";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -97,7 +97,7 @@ export function SidebarBrand() {
   return (
     <span className="flex items-center gap-2.5">
       <span className="bg-primary text-primary-foreground grid size-7 shrink-0 place-items-center rounded-lg">
-        <Inbox className="size-4" />
+        <Lock className="size-4" />
       </span>
       <span className="text-[15px] font-semibold tracking-tight">Prompt Vault</span>
     </span>

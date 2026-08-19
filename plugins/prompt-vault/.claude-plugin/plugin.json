@@ -1,7 +1,7 @@
 {
   "name": "prompt-vault",
   "description": "Queue prompts in a local browser page, outside any repo's telemetry — Claude claims them one at a time, carries them out, and marks each done.",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "author": {
     "name": "aagam-headout"
   },
