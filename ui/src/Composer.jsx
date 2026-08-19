@@ -8,13 +8,21 @@ import { Textarea } from "@/components/ui/textarea";
 // the Enhance tab, where the draft and the result can sit side by side.
 export default function Composer({ project, projectName, onAdd, onEnhance }) {
   const [text, setText] = useState("");
+  // A second ⌘↵ before the first round-trip lands would queue the prompt twice.
+  const [saving, setSaving] = useState(false);
 
-  const canSubmit = Boolean(project) && Boolean(text.trim());
+  const canSubmit = Boolean(project) && Boolean(text.trim()) && !saving;
 
   async function submit() {
     if (!canSubmit) return;
-    await onAdd(text);
-    setText("");
+    setSaving(true);
+    try {
+      // Keep the draft on screen if the write failed — the error banner above
+      // is the only other trace of it.
+      if ((await onAdd(text)) !== false) setText("");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (

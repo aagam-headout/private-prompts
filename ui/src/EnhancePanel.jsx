@@ -83,9 +83,31 @@ export default function EnhancePanel({ project, session, initial = "", onQueue }
   }
 
   async function queue(text) {
-    await onQueue(text);
+    if ((await onQueue(text)) === false) return; // failed write: keep both panes
     setDraft("");
     setResult(null);
+  }
+
+  // Three states, not two: until /api/session answers there is nothing to say
+  // about what is installed, and claiming "no CLI found" then is a lie the user
+  // acts on.
+  if (!session) {
+    return (
+      <p className="text-muted-foreground flex items-center gap-2 rounded-xl border border-dashed px-6 py-10 text-center text-[13px]">
+        <Loader2 className="size-3.5 animate-spin" />
+        Looking for installed agent CLIs…
+      </p>
+    );
+  }
+
+  if (session.error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>
+          Could not reach the vault to check for agent CLIs: {session.error}
+        </AlertDescription>
+      </Alert>
+    );
   }
 
   if (installed.length === 0) {

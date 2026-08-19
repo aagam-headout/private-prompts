@@ -1,6 +1,6 @@
 {
   "name": "@aagam-headout/prompt-vault",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publishConfig": {
     "access": "public"
   },
@@ -23,7 +23,7 @@
     "dev": "vite",
     "build": "vite build",
     "start": "node server/cli.js",
-    "test": "node --test server/",
+    "test": "node --test server/*.test.js",
     "prepack": "npm run build"
   },
   "devDependencies": {

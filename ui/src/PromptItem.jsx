@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   ChevronRight,
@@ -35,7 +35,7 @@ function when(ms) {
   return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function Action({ label, onClick, children, destructive }) {
+function Action({ label, onClick, children, destructive, className }) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -45,7 +45,7 @@ function Action({ label, onClick, children, destructive }) {
             size="icon-sm"
             onClick={onClick}
             aria-label={label}
-            className={cn(destructive && "hover:text-destructive")}
+            className={cn(destructive && "hover:text-destructive", className)}
           />
         }
       >
@@ -69,6 +69,29 @@ export default function PromptItem({
   const [editing, setEditing] = useState(false);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(prompt.text);
+  // Two clicks to delete: there is no undo and no confirm dialog in this app.
+  const [confirming, setConfirming] = useState(false);
+  const disarm = useRef(null);
+
+  // The row survives polls (it is keyed by id), so text changed elsewhere — the
+  // CLI, a second tab — would otherwise be overwritten by a stale draft the
+  // next time the editor opens.
+  useEffect(() => {
+    if (!editing) setDraft(prompt.text);
+  }, [prompt.text, editing]);
+
+  useEffect(() => () => clearTimeout(disarm.current), []);
+
+  function requestRemove() {
+    if (!confirming) {
+      setConfirming(true);
+      disarm.current = setTimeout(() => setConfirming(false), 3000);
+      return;
+    }
+    clearTimeout(disarm.current);
+    setConfirming(false);
+    onRemove(prompt.id);
+  }
 
   const lines = prompt.text.split("\n");
   const expandable = lines.length > 1 || prompt.text.length > 80;
@@ -191,7 +214,12 @@ export default function PromptItem({
 
         {/* Meta and actions occupy the same slot: the timestamp is the resting
             state, the buttons take over on hover so the row stops shifting. */}
-        <span className="relative flex h-7 items-center justify-end sm:w-[7.75rem]">
+        <span
+          className={cn(
+            "relative flex h-7 items-center justify-end",
+            running ? "sm:w-[9.5rem]" : "sm:w-[7.75rem]"
+          )}
+        >
           <span className="text-muted-foreground hidden pr-1.5 text-xs whitespace-nowrap transition-opacity group-focus-within:opacity-0 group-hover:opacity-0 sm:inline">
             {when(prompt.done_at || prompt.created_at)}
           </span>
@@ -209,12 +237,18 @@ export default function PromptItem({
                 <Pencil />
                 Edit
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onStatus(prompt.id, done ? "pending" : "done")}
-              >
-                {done ? <CornerUpLeft /> : <Check />}
-                {done ? "Requeue" : "Mark done"}
-              </DropdownMenuItem>
+              {!done && (
+                <DropdownMenuItem onClick={() => onStatus(prompt.id, "done")}>
+                  <Check />
+                  Mark done
+                </DropdownMenuItem>
+              )}
+              {(done || running) && (
+                <DropdownMenuItem onClick={() => onStatus(prompt.id, "pending")}>
+                  <CornerUpLeft />
+                  {done ? "Requeue" : "Return to queue"}
+                </DropdownMenuItem>
+              )}
               {targets.length > 0 && (
                 <>
                   <DropdownMenuSeparator />
@@ -233,9 +267,13 @@ export default function PromptItem({
                 </>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={() => onRemove(prompt.id)}>
+              <DropdownMenuItem
+                variant="destructive"
+                closeOnClick={confirming}
+                onClick={requestRemove}
+              >
                 <Trash2 />
-                Delete
+                {confirming ? "Tap again to delete" : "Delete"}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -250,13 +288,20 @@ export default function PromptItem({
               <Pencil />
             </Action>
 
-            {done ? (
-              <Action label="Requeue" onClick={() => onStatus(prompt.id, "pending")}>
-                <CornerUpLeft />
-              </Action>
-            ) : (
+            {/* An agent that dies mid-run leaves the prompt in_progress forever,
+                so returning it to the queue has to be reachable from that state
+                too — not only from done. */}
+            {!done && (
               <Action label="Mark done" onClick={() => onStatus(prompt.id, "done")}>
                 <Check />
+              </Action>
+            )}
+            {(done || running) && (
+              <Action
+                label={done ? "Requeue" : "Return to queue"}
+                onClick={() => onStatus(prompt.id, "pending")}
+              >
+                <CornerUpLeft />
               </Action>
             )}
 
@@ -285,7 +330,12 @@ export default function PromptItem({
               </DropdownMenu>
             )}
 
-            <Action label="Delete" destructive onClick={() => onRemove(prompt.id)}>
+            <Action
+              label={confirming ? "Click again to delete" : "Delete"}
+              destructive
+              className={confirming ? "text-destructive" : undefined}
+              onClick={requestRemove}
+            >
               <Trash2 />
             </Action>
           </span>

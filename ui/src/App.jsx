@@ -59,7 +59,9 @@ export default function App() {
   const [projects, setProjects] = useState([]);
   const [session, setSession] = useState(null);
   const [tab, setTab] = useState("queue");
-  const [seed, setSeed] = useState("");
+  // A counter rides along with the text so handing the *same* draft over twice
+  // still resets the Enhance panel.
+  const [seed, setSeed] = useState({ text: "", n: 0 });
   // "" means the All-projects view; otherwise an absolute project path.
   const [selected, setSelected] = useState(CURRENT);
   const [error, setError] = useState(null);
@@ -99,21 +101,30 @@ export default function App() {
 
   useEffect(() => {
     // Which CLIs exist and what models they offer changes only across restarts.
-    api.session(CURRENT).then(setSession).catch(() => setSession(null));
+    // Keep the failure distinguishable from "still loading" — the Enhance panel
+    // renders a different thing for each.
+    api.session(CURRENT)
+      .then(setSession)
+      .catch((err) => setSession({ error: err.message }));
   }, []);
 
+  // Resolves to whether the write actually landed: callers that clear a
+  // textarea afterwards must not throw the user's text away on a failure.
   const mutate = useCallback(
     async (fn) => {
       busy.current += 1;
+      let ok = true;
       try {
         await fn();
         setError(null);
       } catch (err) {
+        ok = false;
         setError(err.message);
       } finally {
         busy.current -= 1;
       }
       await refresh();
+      return ok;
     },
     [refresh]
   );
@@ -122,10 +133,17 @@ export default function App() {
     () => ({
       pending: prompts.filter((p) => p.status === "pending"),
       inProgress: prompts.filter((p) => p.status === "in_progress"),
-      done: prompts.filter((p) => p.status === "done").reverse(),
+      // Already newest-first from the server, which orders the done pile by
+      // when each prompt was finished rather than by its queue position.
+      done: prompts.filter((p) => p.status === "done"),
     }),
     [prompts]
   );
+
+  // Queue into whatever project is on screen. Sending everything to CURRENT
+  // while the list is filtered to another project made new prompts vanish on
+  // save. "All projects" has no single target, so it falls back to CURRENT.
+  const target = selected || CURRENT;
 
   const itemProps = {
     showProject: selected === "",
@@ -136,7 +154,7 @@ export default function App() {
     onMove: (id, project) => mutate(() => api.movePrompt(id, project)),
   };
 
-  const addPrompt = (text) => mutate(() => api.addPrompt(CURRENT, text));
+  const addPrompt = (text) => mutate(() => api.addPrompt(target, text));
 
   const navProps = {
     projects,
@@ -241,15 +259,15 @@ export default function App() {
                 </Alert>
               )}
 
-              <TabsContent value="queue">
+              <TabsContent value="queue" keepMounted>
                 <Composer
-                  project={CURRENT}
-                  projectName={basename(CURRENT)}
+                  project={target}
+                  projectName={basename(target)}
                   onAdd={addPrompt}
                   onEnhance={(text) => {
                     // Carry the half-written draft across so switching tabs
                     // never costs the user their text.
-                    setSeed(text);
+                    setSeed((current) => ({ text, n: current.n + 1 }));
                     setTab("enhance");
                   }}
                 />
@@ -291,7 +309,7 @@ export default function App() {
 
                   {loaded && groups.pending.length === 0 && (
                     <p className="text-muted-foreground rounded-xl border border-dashed px-6 py-10 text-center text-[13px]">
-                      {selected === CURRENT
+                      {target
                         ? "Nothing queued. Write a prompt above."
                         : "Nothing queued for this project."}
                     </p>
@@ -330,15 +348,16 @@ export default function App() {
                 )}
               </TabsContent>
 
-              <TabsContent value="enhance">
+              <TabsContent value="enhance" keepMounted>
                 <EnhancePanel
-                  key={seed}
-                  project={CURRENT}
+                  key={seed.n}
+                  project={target}
                   session={session}
-                  initial={seed}
+                  initial={seed.text}
                   onQueue={async (text) => {
-                    await addPrompt(text);
-                    setTab("queue");
+                    const ok = await addPrompt(text);
+                    if (ok) setTab("queue");
+                    return ok;
                   }}
                 />
               </TabsContent>

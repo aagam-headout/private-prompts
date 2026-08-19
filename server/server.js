@@ -32,7 +32,10 @@ function send(res, code, payload) {
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let data = "";
+    // Buffers, not string concatenation: a multi-byte character (emoji, CJK, a
+    // curly quote) split across two chunks decodes to U+FFFD if each chunk is
+    // stringified on its own. Decode once, over the whole body.
+    const chunks = [];
     let size = 0;
     req.on("data", (chunk) => {
       size += chunk.length;
@@ -41,12 +44,12 @@ function readBody(req) {
         req.destroy();
         return;
       }
-      data += chunk;
+      chunks.push(chunk);
     });
     req.on("end", () => {
-      if (!data) return resolve({});
+      if (!chunks.length) return resolve({});
       try {
-        resolve(JSON.parse(data));
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
       } catch {
         resolve({}); // malformed JSON -> empty body rather than a crash
       }

@@ -75,9 +75,14 @@ function decorate(row) {
   return { ...row, projectName: projectName(row.project) };
 }
 
+// Done prompts are never pruned, and the browser re-fetches the whole list
+// every couple of seconds — so only the most recent ones travel. -1 lifts the
+// cap for callers that want the real total (the CLI's `list`).
+export const DONE_LIMIT = 50;
+
 // Omit `project` to see every project's prompts — that's what the UI's "All
 // projects" view uses. Agents always pass one.
-export function list({ project, status } = {}) {
+export function list({ project, status, doneLimit = DONE_LIMIT } = {}) {
   const where = [];
   const args = [];
   if (project) {
@@ -88,11 +93,35 @@ export function list({ project, status } = {}) {
     where.push("status = ?");
     args.push(status);
   }
-  const sql =
+  const clause = (extra) => {
+    const all = extra ? [...where, extra] : where;
+    return all.length ? ` WHERE ${all.join(" AND ")}` : "";
+  };
+  const d = open();
+
+  if (status) {
+    // An explicit status filter is the caller's own slice; honour it verbatim,
+    // capping only a request for the done pile.
+    const capped = status === "done" && doneLimit >= 0;
+    const sql =
+      "SELECT * FROM prompts" +
+      clause() +
+      (capped ? " ORDER BY done_at DESC, id DESC LIMIT ?" : " ORDER BY position, id");
+    return d.prepare(sql).all(...args, ...(capped ? [doneLimit] : [])).map(decorate);
+  }
+
+  // Two queries rather than one: the live queue is ordered by position, while
+  // the done pile is ordered by when it was finished and is capped.
+  const live = d
+    .prepare("SELECT * FROM prompts" + clause("status != 'done'") + " ORDER BY position, id")
+    .all(...args);
+  const doneSql =
     "SELECT * FROM prompts" +
-    (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
-    " ORDER BY position, id";
-  return open().prepare(sql).all(...args).map(decorate);
+    clause("status = 'done'") +
+    " ORDER BY done_at DESC, id DESC" +
+    (doneLimit >= 0 ? " LIMIT ?" : "");
+  const done = d.prepare(doneSql).all(...args, ...(doneLimit >= 0 ? [doneLimit] : []));
+  return [...live, ...done].map(decorate);
 }
 
 export function get(id) {
@@ -144,9 +173,23 @@ export function remove(id) {
 
 export function setStatus(id, status) {
   if (!STATUSES.includes(status)) throw new Error(`unknown status: ${status}`);
-  open()
-    .prepare("UPDATE prompts SET status = ?, done_at = ? WHERE id = ?")
-    .run(status, status === "done" ? Date.now() : null, id);
+  const d = open();
+  const row = d.prepare("SELECT project, status FROM prompts WHERE id = ?").get(id);
+  if (!row) return null;
+  d.prepare("UPDATE prompts SET status = ?, done_at = ? WHERE id = ?").run(
+    status,
+    status === "done" ? Date.now() : null,
+    id
+  );
+  // Returning to the queue means returning to the *back* of it. Keeping the old
+  // position would let a prompt finished last week cut ahead of everything
+  // queued since.
+  if (status === "pending" && row.status !== "pending") {
+    const { next } = d
+      .prepare("SELECT COALESCE(MAX(position), 0) + 1 AS next FROM prompts WHERE project = ?")
+      .get(row.project);
+    d.prepare("UPDATE prompts SET position = ? WHERE id = ?").run(next, id);
+  }
   return get(id);
 }
 

@@ -260,7 +260,8 @@ function commandDone(opts) {
 
 function commandList(opts) {
   const project = db.normalizeProject(opts.cwd);
-  const prompts = db.list({ project });
+  // -1: the CLI prints the whole history, not the browser's capped view.
+  const prompts = db.list({ project, doneLimit: -1 });
   if (opts.json) {
     console.log(JSON.stringify(prompts, null, 2));
     return;
