@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "prompt-vault": "server/cli.js"
+    "agent-prompt-vault": "server/cli.js"
   },
   "files": [
     "server",

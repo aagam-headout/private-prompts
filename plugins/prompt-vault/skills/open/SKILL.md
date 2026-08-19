@@ -16,7 +16,7 @@ transcript.
    agent will not read. It reports the problem itself if Node is too old.
 
    ```sh
-   pv() { if command -v prompt-vault >/dev/null 2>&1; then prompt-vault "$@"; else npx -y agent-prompt-vault "$@"; fi; }
+   pv() { if command -v agent-prompt-vault >/dev/null 2>&1; then agent-prompt-vault "$@"; else npx -y agent-prompt-vault "$@"; fi; }
    pv
    ```
 

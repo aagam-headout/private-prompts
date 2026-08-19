@@ -15,7 +15,7 @@ falls back to `npx`. Shell state does not survive between tool calls, so repeat
 it each time rather than defining it once:
 
 ```sh
-pv() { if command -v prompt-vault >/dev/null 2>&1; then prompt-vault "$@"; else npx -y agent-prompt-vault "$@"; fi; }
+pv() { if command -v agent-prompt-vault >/dev/null 2>&1; then agent-prompt-vault "$@"; else npx -y agent-prompt-vault "$@"; fi; }
 ```
 
 ## Steps
@@ -33,7 +33,7 @@ pv() { if command -v prompt-vault >/dev/null 2>&1; then prompt-vault "$@"; else 
 3. Queue them:
    - If every prompt is a single line, one shot:
      ```sh
-     pv() { if command -v prompt-vault >/dev/null 2>&1; then prompt-vault "$@"; else npx -y agent-prompt-vault "$@"; fi; }
+     pv() { if command -v agent-prompt-vault >/dev/null 2>&1; then agent-prompt-vault "$@"; else npx -y agent-prompt-vault "$@"; fi; }
      printf '%s\n' "step one, self-contained" "step two, self-contained" | pv add --each-line
      ```
    - If any step needs multiple lines, queue that one on its own instead of

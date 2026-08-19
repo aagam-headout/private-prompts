@@ -52,7 +52,7 @@ silenceSqliteWarning();
 const [major, minor] = process.versions.node.split(".").map(Number);
 if (major < 22 || (major === 22 && minor < 5)) {
   console.error(
-    `prompt-vault: needs Node.js 22.5 or newer (running ${process.versions.node}) — ` +
+    `agent-prompt-vault: needs Node.js 22.5 or newer (running ${process.versions.node}) — ` +
     `its queue uses Node's built-in SQLite`
   );
   process.exit(1);
@@ -74,7 +74,7 @@ function usage() {
 }
 
 function die(message) {
-  console.error(`prompt-vault: ${message}`);
+  console.error(`agent-prompt-vault: ${message}`);
   process.exit(1);
 }
 
@@ -277,10 +277,10 @@ async function commandOpen(opts, port) {
   if (running) {
     const mismatch = identityMismatch(running);
     if (mismatch) {
-      console.error(`prompt-vault: refusing to reuse port ${port} — ${mismatch}`);
+      console.error(`agent-prompt-vault: refusing to reuse port ${port} — ${mismatch}`);
       die(`stop it (\`npx -y agent-prompt-vault --stop --port ${port}\`, or kill ${running.pid}) or pick another port with --port`);
     }
-    console.log(`prompt-vault: already running on port ${port}`);
+    console.log(`agent-prompt-vault: already running on port ${port}`);
   } else {
     const child = spawn(process.execPath, [SERVE], {
       env: { ...process.env, PV_PORT: String(port) },
@@ -305,7 +305,7 @@ async function commandOpen(opts, port) {
     }
     const mismatch = identityMismatch(running);
     if (mismatch) die(`port ${port} is served by another vault — ${mismatch}`);
-    console.log(`prompt-vault: started on port ${port}`);
+    console.log(`agent-prompt-vault: started on port ${port}`);
   }
 
   // Resolve here too, so the page queues prompts under the same key the
@@ -313,20 +313,20 @@ async function commandOpen(opts, port) {
   const url = `http://127.0.0.1:${port}/?project=${encodeURIComponent(db.projectFor(opts.cwd))}`;
   console.log(url);
   if (opts.open && !(await openInBrowser(url))) {
-    console.log("prompt-vault: open the URL above in your browser");
+    console.log("agent-prompt-vault: open the URL above in your browser");
   }
 }
 
 async function commandStop(port) {
   const running = await health(port);
   if (!running) {
-    console.log("prompt-vault: nothing to stop");
+    console.log("agent-prompt-vault: nothing to stop");
     return;
   }
   const { status } = await request(port, "/shutdown", "POST");
   for (let i = 0; i < 20; i++) {
     if (!(await health(port))) {
-      console.log("prompt-vault: stopped");
+      console.log("agent-prompt-vault: stopped");
       return;
     }
     await sleep(100);
@@ -351,7 +351,7 @@ function printPrompts(prompts, opts) {
 }
 
 // Args win when given; otherwise fall back to stdin so a multi-line prompt
-// can be piped in (`cat prompt.txt | prompt-vault add`) instead of forcing it
+// can be piped in (`cat prompt.txt | agent-prompt-vault add`) instead of forcing it
 // onto one shell-quoted line. Refusing when stdin is a TTY stops `add` with no
 // arguments from hanging, waiting on input that will never arrive.
 function commandAdd(opts) {
@@ -375,7 +375,7 @@ function commandAdd(opts) {
       console.log(JSON.stringify(prompt, null, 2));
       return;
     }
-    console.log(`prompt-vault: queued prompt ${prompt.id} (from template "${opts.template}")`);
+    console.log(`agent-prompt-vault: queued prompt ${prompt.id} (from template "${opts.template}")`);
     return;
   }
 
@@ -391,7 +391,7 @@ function commandAdd(opts) {
       console.log(JSON.stringify(queued, null, 2));
       return;
     }
-    console.log(`prompt-vault: queued ${queued.length} prompts: ${queued.map((p) => p.id).join(" ")}`);
+    console.log(`agent-prompt-vault: queued ${queued.length} prompts: ${queued.map((p) => p.id).join(" ")}`);
     return;
   }
 
@@ -407,7 +407,7 @@ function commandAdd(opts) {
     console.log(JSON.stringify(prompt, null, 2));
     return;
   }
-  console.log(`prompt-vault: queued prompt ${prompt.id}`);
+  console.log(`agent-prompt-vault: queued prompt ${prompt.id}`);
 }
 
 function commandNext(opts) {
@@ -415,7 +415,7 @@ function commandNext(opts) {
   const claimed = db.claim(project, opts.count);
   if (!claimed.length) {
     if (opts.json) console.log("[]");
-    else console.log(`prompt-vault: no pending prompts for ${project}`);
+    else console.log(`agent-prompt-vault: no pending prompts for ${project}`);
     return;
   }
   printPrompts(claimed, opts);
@@ -450,7 +450,7 @@ function commandDone(opts) {
     console.log(JSON.stringify(finished, null, 2));
     return;
   }
-  for (const prompt of finished) console.log(`prompt-vault: prompt ${prompt.id} marked done`);
+  for (const prompt of finished) console.log(`agent-prompt-vault: prompt ${prompt.id} marked done`);
 }
 
 // Recovery after an agent dies mid-prompt: without this the prompt stays
@@ -474,10 +474,10 @@ function commandReset(opts) {
     return;
   }
   if (!requeued.length) {
-    console.log(`prompt-vault: no claimed prompts for ${project}`);
+    console.log(`agent-prompt-vault: no claimed prompts for ${project}`);
     return;
   }
-  console.log(`prompt-vault: back in the queue: ${requeued.map((p) => p.id).join(" ")}`);
+  console.log(`agent-prompt-vault: back in the queue: ${requeued.map((p) => p.id).join(" ")}`);
 }
 
 function commandList(opts) {
@@ -491,8 +491,8 @@ function commandList(opts) {
   if (!prompts.length) {
     console.log(
       opts.status
-        ? `prompt-vault: no ${opts.status} prompts for ${project}`
-        : `prompt-vault: queue is empty for ${project}`
+        ? `agent-prompt-vault: no ${opts.status} prompts for ${project}`
+        : `agent-prompt-vault: queue is empty for ${project}`
     );
     return;
   }
@@ -514,7 +514,7 @@ function commandPeek(opts) {
   );
   if (!prompts.length) {
     if (opts.json) console.log("[]");
-    else console.log(`prompt-vault: no pending prompts for ${project}`);
+    else console.log(`agent-prompt-vault: no pending prompts for ${project}`);
     return;
   }
   printPrompts(prompts, opts);
@@ -528,7 +528,7 @@ function commandTemplate(opts) {
       return;
     }
     if (!names.length) {
-      console.log("prompt-vault: no saved templates — `template save <name> \"text\"`");
+      console.log("agent-prompt-vault: no saved templates — `template save <name> \"text\"`");
       return;
     }
     for (const name of names) console.log(name);
@@ -548,8 +548,8 @@ function commandTemplate(opts) {
     }
     console.log(
       removed
-        ? `prompt-vault: removed template "${opts.templateName}"`
-        : `prompt-vault: no template named "${opts.templateName}"`
+        ? `agent-prompt-vault: removed template "${opts.templateName}"`
+        : `agent-prompt-vault: no template named "${opts.templateName}"`
     );
     return;
   }
@@ -563,7 +563,7 @@ function commandTemplate(opts) {
     text = fs.readFileSync(0, "utf8");
   }
   templates.save(opts.templateName, text);
-  console.log(`prompt-vault: saved template "${opts.templateName}"`);
+  console.log(`agent-prompt-vault: saved template "${opts.templateName}"`);
 }
 
 // ---------- main ----------

@@ -18,7 +18,7 @@ run twice — can never pick up the same prompt.
 
 Done rows stay in the table. That is the history; there is no separate archive.
 
-Templates (`prompt-vault template ...`) are separate from all of this — plain
+Templates (`agent-prompt-vault template ...`) are separate from all of this — plain
 `.txt` files under `$PV_DATA_DIR/templates/`, not database rows. See
 [Commands](commands.md).
 

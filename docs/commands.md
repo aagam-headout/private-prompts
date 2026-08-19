@@ -11,31 +11,31 @@ npm install -g agent-prompt-vault
 ```
 
 ```bash
-prompt-vault                  # start the vault (if needed) and open it
-prompt-vault --no-open        # start only, print the URL
-prompt-vault --stop           # stop the running vault
+agent-prompt-vault                  # start the vault (if needed) and open it
+agent-prompt-vault --no-open        # start only, print the URL
+agent-prompt-vault --stop           # stop the running vault
 
-prompt-vault add "text"                # queue a new prompt
-prompt-vault add < file.txt            # queue a prompt read from stdin
-prompt-vault add --each-line < tasks.txt  # queue one prompt per line
-prompt-vault next             # claim the next pending prompt
-prompt-vault next 2           # claim the next two
-prompt-vault next --all       # claim everything pending
-prompt-vault done 7           # mark prompt 7 done
-prompt-vault done 7 8 9       # mark several done
-prompt-vault reset 7          # hand prompt 7 back to the queue
-prompt-vault reset            # hand back every claimed prompt in this project
-prompt-vault list             # show this project's queue
-prompt-vault list --pending-only      # show only pending prompts
-prompt-vault list --status done       # filter by status explicitly
-prompt-vault peek             # show the next pending prompt, without claiming it
-prompt-vault peek 3           # show the next three, without claiming them
+agent-prompt-vault add "text"                # queue a new prompt
+agent-prompt-vault add < file.txt            # queue a prompt read from stdin
+agent-prompt-vault add --each-line < tasks.txt  # queue one prompt per line
+agent-prompt-vault next             # claim the next pending prompt
+agent-prompt-vault next 2           # claim the next two
+agent-prompt-vault next --all       # claim everything pending
+agent-prompt-vault done 7           # mark prompt 7 done
+agent-prompt-vault done 7 8 9       # mark several done
+agent-prompt-vault reset 7          # hand prompt 7 back to the queue
+agent-prompt-vault reset            # hand back every claimed prompt in this project
+agent-prompt-vault list             # show this project's queue
+agent-prompt-vault list --pending-only      # show only pending prompts
+agent-prompt-vault list --status done       # filter by status explicitly
+agent-prompt-vault peek             # show the next pending prompt, without claiming it
+agent-prompt-vault peek 3           # show the next three, without claiming them
 
-prompt-vault template save refactor "text"  # save a reusable prompt skeleton
-prompt-vault template list                  # list saved skeletons
-prompt-vault template show refactor         # print a saved skeleton
-prompt-vault template remove refactor       # delete a saved skeleton
-prompt-vault add --template refactor        # queue a skeleton (optionally + extra text)
+agent-prompt-vault template save refactor "text"  # save a reusable prompt skeleton
+agent-prompt-vault template list                  # list saved skeletons
+agent-prompt-vault template show refactor         # print a saved skeleton
+agent-prompt-vault template remove refactor       # delete a saved skeleton
+agent-prompt-vault add --template refactor        # queue a skeleton (optionally + extra text)
 ```
 
 Flags: `--cwd <path>` (defaults to the current directory), `--port <n>`,
