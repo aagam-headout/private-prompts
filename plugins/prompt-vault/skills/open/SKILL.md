@@ -5,54 +5,35 @@ description: Open the Prompt Vault queue in a local browser page so the user can
 
 # Open the Prompt Vault
 
-## Overview
-
-Prompt Vault is a local queue. The user writes prompts in a browser page; this
-agent claims them later with `/prompt-vault:next` and marks each one done. The
-prompt text never has to appear in the chat transcript.
-
-Everything lives in one SQLite database outside any repository —
-`~/.prompt-vault/vault.db` — shared by every agent and stable across updates.
+The user writes prompts into a local browser page instead of the chat box;
+`/prompt-vault:next` claims them later, so the prompt text never enters the
+transcript.
 
 ## Steps
 
-1. Confirm Node.js 22.5 or newer is available (the vault uses Node's built-in
-   SQLite):
+1. Start the vault and open the page. Idempotent: it reuses a running server, and
+   refuses a port held by a different vault rather than queueing prompts this
+   agent will not read. It reports the problem itself if Node is too old.
 
    ```sh
-   node -e 'process.exit(process.versions.node.split(".").map(Number)[0] >= 22 ? 0 : 1)' \
-     || echo "prompt-vault needs Node.js 22.5 or newer"
+   pv() { if command -v prompt-vault >/dev/null 2>&1; then prompt-vault "$@"; else npx -y prompt-vault-cli "$@"; fi; }
+   pv
    ```
 
-   If it is missing or too old, tell the user and stop.
+   That definition prefers a global install and falls back to `npx`; repeat it on
+   every vault command, since shell state does not survive between tool calls.
 
-2. Start the vault and open it. This is idempotent: it reuses a server that is
-   already running, and refuses a port held by a different vault install rather
-   than queueing prompts where this agent will not read them.
+2. It prints the URL. If no browser opened, hand the user that URL.
 
-   ```sh
-   npx -y @aagam-headout/prompt-vault --cwd "$(pwd)"
-   ```
+3. Ask the user to add prompts in the page and say when they are ready — never to
+   paste prompt text into chat.
 
-   It prints the URL. If no browser opened, give that URL to the user.
-
-3. Tell the user to add their prompts in the page and say when they are ready.
-   Do not ask them to paste the prompt text into chat.
-
-4. When they confirm, run `/prompt-vault:next` to claim and carry out the queue.
+4. On their go-ahead, run `/prompt-vault:next`.
 
 ## Notes
 
-- The queue is global but tagged by project directory: the page can show every
-  project, while `next` only ever claims prompts belonging to the current one.
-- `npx -y @aagam-headout/prompt-vault --no-open` starts without opening a browser;
-  `--stop` stops the server; `--port` overrides the port.
-- `npx -y @aagam-headout/prompt-vault list` prints this project's queue as a table, which is
-  usually enough to answer "what's queued?" without opening the page.
-- The server binds only to `127.0.0.1` and rejects any request whose `Host` is
-  not loopback or whose `Origin` is another site, so a page the user happens to
-  be browsing cannot read or write the queue. There is no authentication beyond
-  that: other processes under the same local account can reach every route, as
-  they can already read the database file directly.
-- `PV_DATA_DIR` moves the vault (default `~/.prompt-vault`), `PV_PORT` changes
-  the port (default `8974`).
+- Prompts are tagged by project: the page can show every project, while `next`
+  claims only this one's. Any directory in the repository resolves to one queue.
+- `pv list` answers "what's queued?" without opening the page. `pv --no-open`
+  starts without a browser, `pv --stop` stops the server.
+- `npm install -g prompt-vault-cli` skips the `npx` fetch on every call.

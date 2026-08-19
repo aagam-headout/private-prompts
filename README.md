@@ -11,7 +11,7 @@ appear in the transcript, and you can line up work while the agent is busy.
 ## Quick start
 
 ```bash
-npx -y @aagam-headout/prompt-vault
+npx -y prompt-vault-cli
 ```
 
 That starts a loopback-only server and opens the queue for the current
@@ -25,7 +25,7 @@ database directly, so they work whether or not the browser page is running.
 Install it once so the commands below are short:
 
 ```bash
-npm install -g @aagam-headout/prompt-vault
+npm install -g prompt-vault-cli
 ```
 
 ```bash
@@ -37,11 +37,20 @@ prompt-vault next             # claim the next pending prompt
 prompt-vault next 2           # claim the next two
 prompt-vault next --all       # claim everything pending
 prompt-vault done 7           # mark prompt 7 done
+prompt-vault done 7 8 9       # mark several done
+prompt-vault reset 7          # hand prompt 7 back to the queue
+prompt-vault reset            # hand back every claimed prompt in this project
 prompt-vault list             # show this project's queue
 ```
 
 Flags: `--cwd <path>` (defaults to the current directory), `--port <n>`,
-`--json` for machine-readable output on the queue commands.
+`--json` for machine-readable output on the queue commands, `--force` to let
+`done` or `reset` touch a prompt belonging to another project.
+
+A working directory inside a git repository is tagged with the repository root,
+so a prompt queued from the root is claimed by an agent running in `src/` — one
+queue per project, not per directory. Queues that were already keyed to a
+subdirectory keep working as they are.
 
 ## Plugin commands
 
@@ -77,12 +86,11 @@ codex plugin add prompt-vault@prompt-vault
 Open **Cursor Settings**, find the plugins section, add this repo
 (`aagam-headout/prompt-vault`) as a marketplace, then add the plugin.
 
-The skills only shell out to `npx -y @aagam-headout/prompt-vault` — a scoped
-name, so an agent following a skill can only ever resolve a package published
-under this account, never an unowned name someone else controls. The plugin
-itself is two markdown files; there is nothing to keep in sync between the
-plugin and the app, and publishing a new version reaches users without touching
-the skills.
+The skills only shell out to `npx -y prompt-vault-cli`, the package published from
+this repository, so an agent following a skill always resolves the same
+published name. The plugin itself is two markdown files; there is nothing to
+keep in sync between the plugin and the app, and publishing a new version
+reaches users without touching the skills.
 
 ## How it works
 

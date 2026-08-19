@@ -39,6 +39,74 @@ test("normalizeProject agrees however the path is written", () => {
   assert.equal(db.normalizeProject("/nope/gone/"), "/nope/gone");
 });
 
+test("a subdirectory of a repository resolves to the repository root", () => {
+  reset();
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pv-repo-")));
+  const sub = path.join(root, "packages", "app");
+  fs.mkdirSync(sub, { recursive: true });
+  fs.mkdirSync(path.join(root, ".git"));
+  try {
+    assert.equal(db.repoRoot(sub), root);
+    assert.equal(db.projectFor(sub), root);
+    // A prompt queued from the root is what an agent in the subdirectory claims.
+    db.add({ project: root, text: "from the root" });
+    const claimed = db.claim(db.projectFor(sub), 1);
+    assert.equal(claimed.length, 1);
+    assert.equal(claimed[0].text, "from the root");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a queue already keyed to a subdirectory keeps its prompts", () => {
+  reset();
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pv-legacy-")));
+  const sub = path.join(root, "web");
+  fs.mkdirSync(sub, { recursive: true });
+  fs.mkdirSync(path.join(root, ".git"));
+  try {
+    db.add({ project: sub, text: "queued before walk-up existed" });
+    assert.equal(db.projectFor(sub), sub);
+    assert.equal(db.claim(db.projectFor(sub), 1)[0].text, "queued before walk-up existed");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("normalizeProject uses the on-disk spelling of a path", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pv-Case-"));
+  try {
+    const canonical = db.normalizeProject(dir);
+    // Only meaningful where the filesystem is case-insensitive; elsewhere the
+    // shouted path does not exist and normalizeProject keeps it verbatim.
+    const shouted = db.normalizeProject(dir.toUpperCase());
+    if (fs.existsSync(dir.toUpperCase())) assert.equal(shouted, canonical);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("requeueStalled hands claimed prompts back, this project only", () => {
+  reset();
+  const other = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pv-other-")));
+  try {
+    db.add({ project: PROJECT, text: "mine" });
+    db.add({ project: other, text: "theirs" });
+    db.claim(PROJECT, -1);
+    db.claim(other, -1);
+    const back = db.requeueStalled(PROJECT);
+    assert.deepEqual(back.map((p) => p.status), ["pending"]);
+    assert.equal(back[0].text, "mine");
+    // The other project's claim is untouched, and the requeued prompt is
+    // claimable again.
+    assert.equal(db.list({ project: other, status: "in_progress" }).length, 1);
+    assert.equal(db.claim(PROJECT, 1)[0].text, "mine");
+    assert.equal(db.requeueStalled(other).length, 1);
+  } finally {
+    fs.rmSync(other, { recursive: true, force: true });
+  }
+});
+
 test("add rejects an empty prompt or a missing project", () => {
   reset();
   assert.throws(() => db.add({ project: PROJECT, text: "   " }), /empty prompt/);

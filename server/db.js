@@ -60,11 +60,47 @@ export function close() {
 export function normalizeProject(cwd) {
   if (!cwd || typeof cwd !== "string" || !cwd.trim()) return "";
   const trimmed = cwd.trim().replace(/[/\\]+$/, "") || cwd.trim();
+  // realpathSync alone resolves symlinks but keeps whatever case the caller
+  // typed, so on a case-insensitive filesystem (macOS, Windows) `/repo` and
+  // `/Repo` would become two queues for one directory. The native variant
+  // returns the on-disk spelling, which is the same for every caller.
+  try {
+    return fs.realpathSync.native(trimmed);
+  } catch {}
   try {
     return fs.realpathSync(trimmed);
   } catch {
     return trimmed; // path gone or unreadable — a stable name still beats none
   }
+}
+
+// A `.git` entry (a directory normally, a file inside a worktree) marks the top
+// of a project.
+export function repoRoot(project) {
+  let dir = project;
+  while (dir) {
+    if (fs.existsSync(path.join(dir, ".git"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null; // reached the filesystem root
+    dir = parent;
+  }
+  return null;
+}
+
+// The partition key for a working directory. An agent started in a
+// subdirectory must see the same queue as one started at the repository root,
+// so resolution walks up before the path is used as a key.
+//
+// Queues created before that walk-up existed are keyed by the exact directory
+// they were opened from; preferring that key while it still holds rows keeps
+// those prompts reachable instead of orphaning them under the root.
+export function projectFor(cwd) {
+  const exact = normalizeProject(cwd);
+  if (!exact) return "";
+  const root = repoRoot(exact);
+  if (!root || root === exact) return exact;
+  const { n } = open().prepare("SELECT COUNT(*) AS n FROM prompts WHERE project = ?").get(exact);
+  return n > 0 ? exact : root;
 }
 
 export function projectName(project) {
@@ -233,6 +269,18 @@ export function reorder(ids) {
     d.exec("ROLLBACK");
     throw err;
   }
+}
+
+// Crash recovery: an agent killed between `next` and `done` leaves its prompts
+// claimed, and nothing in the CLI could hand them back. Returns the requeued
+// rows so the caller can report exactly what moved.
+export function requeueStalled(project) {
+  const proj = normalizeProject(project);
+  if (!proj) throw new Error("missing project path");
+  const rows = open()
+    .prepare("SELECT id FROM prompts WHERE project = ? AND status = 'in_progress' ORDER BY position, id")
+    .all(proj);
+  return rows.map((row) => setStatus(row.id, "pending"));
 }
 
 export function complete(id) {

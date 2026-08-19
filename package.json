@@ -1,9 +1,6 @@
 {
-  "name": "@aagam-headout/prompt-vault",
+  "name": "prompt-vault-cli",
   "version": "0.2.0",
-  "publishConfig": {
-    "access": "public"
-  },
   "description": "Local prompt queue for coding agents. Draft prompts in a browser, agents claim them and mark them done.",
   "license": "MIT",
   "type": "module",
