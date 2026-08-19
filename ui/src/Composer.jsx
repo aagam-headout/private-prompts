@@ -1,21 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
 
 // Deliberately plain: writing and queueing only. Rewriting a prompt lives in
 // the Enhance tab, where the draft and the result can sit side by side.
 export default function Composer({ project, projectName, onAdd, onEnhance }) {
   const [text, setText] = useState("");
-  const box = useRef(null);
-
-  // Grow with the content instead of making the user drag a resize corner.
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(300, Math.max(76, el.scrollHeight))}px`;
-  }, [text]);
 
   const canSubmit = Boolean(project) && Boolean(text.trim());
 
@@ -26,9 +18,8 @@ export default function Composer({ project, projectName, onAdd, onEnhance }) {
   }
 
   return (
-    <div className="bg-card focus-within:border-muted-foreground/40 rounded-xl border transition-colors focus-within:shadow-sm">
+    <div className="bg-card ring-border focus-within:ring-ring/60 rounded-xl ring-1 ring-inset transition-shadow focus-within:ring-2">
       <Textarea
-        ref={box}
         value={text}
         placeholder={
           project
@@ -41,27 +32,29 @@ export default function Composer({ project, projectName, onAdd, onEnhance }) {
           // Enter alone inserts a newline — prompts are usually multi-line.
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") submit();
         }}
-        className="min-h-[76px] resize-none border-0 bg-transparent px-4 py-3 font-mono text-[13px] shadow-none focus-visible:ring-0 dark:bg-transparent"
+        // field-sizing-content (from the base Textarea) grows the box with the
+        // text; the max keeps a long draft from pushing the queue off screen.
+        className="max-h-[18rem] min-h-[5.5rem] resize-none border-0 bg-transparent px-3.5 py-3 text-[13.5px] leading-relaxed shadow-none focus-visible:ring-0 disabled:bg-transparent dark:bg-transparent dark:disabled:bg-transparent"
       />
 
-      <div className="flex items-center gap-2 px-2 pb-2">
-        {text.trim() && (
+      <div className="flex items-center gap-2 border-t px-2 py-2">
+        {text.trim() ? (
           <Button variant="ghost" size="sm" onClick={() => onEnhance(text)}>
-            <Sparkles className="size-3.5" />
+            <Sparkles />
             Refine first
           </Button>
+        ) : (
+          <span className="text-muted-foreground pl-1.5 text-xs">
+            {project ? "Agents pick these up in order" : "No project — start from the CLI"}
+          </span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <span className="hidden items-center gap-1 sm:flex">
-            <kbd className="text-muted-foreground bg-muted rounded border px-1.5 py-0.5 text-[10px]">
-              ⌘
-            </kbd>
-            <kbd className="text-muted-foreground bg-muted rounded border px-1.5 py-0.5 text-[10px]">
-              enter
-            </kbd>
-          </span>
+          <KbdGroup className="max-sm:hidden">
+            <Kbd>⌘</Kbd>
+            <Kbd>↵</Kbd>
+          </KbdGroup>
           <Button size="sm" disabled={!canSubmit} onClick={submit}>
-            <Plus className="size-3.5" />
+            <Plus />
             Queue
           </Button>
         </div>

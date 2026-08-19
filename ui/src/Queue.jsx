@@ -63,11 +63,11 @@ export default function Queue({ prompts, canReorder, onReorder, onDraggingChange
   }
 
   return (
-    <div className="space-y-1">
+    <div className="flex flex-col gap-1.5">
       {list.map((prompt) => (
         <div
           key={prompt.id}
-          className={cn("group/row flex items-center", dragId === prompt.id && "opacity-40")}
+          className={cn("group/row", dragId === prompt.id && "opacity-40")}
           draggable={canReorder && armed === prompt.id}
           onDragStart={() => begin(prompt.id)}
           onDragOver={(event) => {
@@ -77,33 +77,33 @@ export default function Queue({ prompts, canReorder, onReorder, onDraggingChange
           onDrop={(event) => event.preventDefault()}
           onDragEnd={end}
         >
-          {canReorder ? (
-            <button
-              type="button"
-              aria-label={`Reorder prompt ${prompt.id}`}
-              onMouseDown={() => setArmed(prompt.id)}
-              onMouseUp={() => setArmed(null)}
-              onKeyDown={(event) => {
-                if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  nudge(prompt.id, -1);
-                }
-                if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  nudge(prompt.id, 1);
-                }
-              }}
-              className="text-muted-foreground/0 group-hover/row:text-muted-foreground hover:text-foreground flex w-5 cursor-grab justify-center transition-colors focus-visible:text-foreground active:cursor-grabbing"
-            >
-              <GripVertical className="size-4" />
-            </button>
-          ) : (
-            <span className="w-5 shrink-0" aria-hidden="true" />
-          )}
-
-          <div className="min-w-0 flex-1">
-            <PromptItem prompt={prompt} {...itemProps} />
-          </div>
+          <PromptItem
+            prompt={prompt}
+            {...itemProps}
+            handle={
+              canReorder ? (
+                <button
+                  type="button"
+                  aria-label={`Reorder prompt ${prompt.id}`}
+                  onMouseDown={() => setArmed(prompt.id)}
+                  onMouseUp={() => setArmed(null)}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      nudge(prompt.id, -1);
+                    }
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      nudge(prompt.id, 1);
+                    }
+                  }}
+                  className="text-muted-foreground/0 group-hover/row:text-muted-foreground hover:text-foreground focus-visible:text-foreground grid size-5 cursor-grab place-items-center rounded transition-colors outline-none active:cursor-grabbing"
+                >
+                  <GripVertical className="size-3.5" />
+                </button>
+              ) : null
+            }
+          />
         </div>
       ))}
     </div>

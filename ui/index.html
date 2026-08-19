@@ -6,18 +6,29 @@
     <meta name="color-scheme" content="light dark" />
     <title>Prompt Vault</title>
     <script>
-      // shadcn's dark tokens hang off a `.dark` class. There is no theme
-      // switcher here, so mirror the OS preference onto <html> before first
-      // paint to avoid a flash of the wrong theme.
+      // shadcn's dark tokens hang off a `.dark` class. Resolve the theme before
+      // first paint so the page never flashes the wrong one. A stored choice
+      // wins; otherwise follow the OS and keep following it as it changes.
       (function () {
         var query = window.matchMedia("(prefers-color-scheme: dark)");
-        var apply = function (dark) {
+        var stored = null;
+        try {
+          stored = localStorage.getItem("pv-theme");
+        } catch (err) {
+          /* private mode — fall back to the OS preference */
+        }
+        var apply = function () {
+          var choice = stored || "system";
+          var dark = choice === "dark" || (choice === "system" && query.matches);
           document.documentElement.classList.toggle("dark", dark);
         };
-        apply(query.matches);
-        query.addEventListener("change", function (event) {
-          apply(event.matches);
-        });
+        apply();
+        query.addEventListener("change", apply);
+        // App.jsx re-runs this after writing a new choice.
+        window.__pvApplyTheme = function (next) {
+          stored = next === "system" ? null : next;
+          apply();
+        };
       })();
     </script>
   </head>

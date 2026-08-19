@@ -1,14 +1,26 @@
 import { useState } from "react";
-import { Check, CornerUpLeft, FolderInput, Pencil, Trash2, X } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  CornerUpLeft,
+  FolderInput,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuGroup,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Kbd } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -26,16 +38,18 @@ function when(ms) {
 function Action({ label, onClick, children, destructive }) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClick}
-          className={cn("size-7", destructive && "hover:text-destructive")}
-        >
-          {children}
-          <span className="sr-only">{label}</span>
-        </Button>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onClick}
+            aria-label={label}
+            className={cn(destructive && "hover:text-destructive")}
+          />
+        }
+      >
+        {children}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
@@ -46,6 +60,7 @@ export default function PromptItem({
   prompt,
   showProject,
   projects = [],
+  handle,
   onEdit,
   onRemove,
   onStatus,
@@ -56,8 +71,10 @@ export default function PromptItem({
   const [draft, setDraft] = useState(prompt.text);
 
   const lines = prompt.text.split("\n");
-  const expandable = lines.length > 1 || prompt.text.length > 90;
+  const expandable = lines.length > 1 || prompt.text.length > 80;
   const targets = projects.filter((p) => p.project !== prompt.project);
+  const done = prompt.status === "done";
+  const running = prompt.status === "in_progress";
 
   async function save() {
     if (draft.trim() && draft !== prompt.text) await onEdit(prompt.id, draft);
@@ -71,7 +88,7 @@ export default function PromptItem({
 
   if (editing) {
     return (
-      <div className="bg-card overflow-hidden rounded-lg border">
+      <div className="bg-card ring-ring/50 overflow-hidden rounded-xl ring-1 ring-inset">
         <Textarea
           value={draft}
           autoFocus
@@ -81,21 +98,22 @@ export default function PromptItem({
             if (event.key === "Escape") cancel();
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") save();
           }}
-          className="resize-y rounded-none border-0 font-mono text-[13px] shadow-none focus-visible:ring-0"
+          className="resize-y rounded-none border-0 bg-transparent px-3.5 py-3 text-[13.5px] leading-relaxed shadow-none focus-visible:ring-0 dark:bg-transparent"
         />
-        <div className="flex items-center gap-2 border-t p-2">
-          <kbd className="text-muted-foreground bg-muted rounded border px-1.5 py-0.5 text-[10px]">
-            esc
-          </kbd>
-          <div className="flex-1" />
-          <Button variant="ghost" size="sm" onClick={cancel}>
-            <X className="size-3.5" />
-            Cancel
-          </Button>
-          <Button size="sm" onClick={save}>
-            <Check className="size-3.5" />
-            Save
-          </Button>
+        <div className="flex items-center gap-2 border-t px-2 py-2">
+          <span className="text-muted-foreground hidden items-center gap-1.5 pl-1.5 text-xs sm:flex">
+            <Kbd>esc</Kbd> to cancel
+          </span>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button variant="ghost" size="sm" onClick={cancel}>
+              <X />
+              Cancel
+            </Button>
+            <Button size="sm" onClick={save}>
+              <Check />
+              Save
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -104,98 +122,174 @@ export default function PromptItem({
   return (
     <div
       className={cn(
-        "group bg-card flex min-h-11 items-center gap-3 rounded-lg border py-1.5 pr-2 pl-3 transition-colors",
-        "hover:border-muted-foreground/30",
-        prompt.status === "in_progress" && "border-primary/40",
-        prompt.status === "done" && "bg-muted/40"
+        "group bg-card relative flex items-start gap-2 rounded-xl py-1.5 pr-2 pl-3.5 transition-colors",
+        "ring-1 ring-inset",
+        running ? "ring-primary/35" : "ring-border hover:ring-foreground/20",
+        done && "bg-transparent"
       )}
     >
+      {/* The grip lives in the page gutter rather than a column inside the row,
+          so the prompt text shares one left edge with the composer above it. */}
+      {handle && (
+        <span className="absolute top-2 -left-5 hidden md:block">{handle}</span>
+      )}
+
       <button
         type="button"
         onClick={() => expandable && setOpen((value) => !value)}
         aria-expanded={expandable ? open : undefined}
         className={cn(
-          "flex min-w-0 flex-1 items-baseline gap-3 py-1 text-left",
+          "flex min-w-0 flex-1 items-start gap-2.5 py-1.5 text-left",
           expandable ? "cursor-pointer" : "cursor-default"
         )}
       >
-        <span className="text-muted-foreground shrink-0 font-mono text-[11px] tabular-nums">
+        {expandable ? (
+          <ChevronRight
+            className={cn(
+              "text-muted-foreground mt-1 size-3.5 shrink-0 transition-transform",
+              open && "rotate-90"
+            )}
+          />
+        ) : (
+          <span className="w-3.5 shrink-0" aria-hidden="true" />
+        )}
+        {/* The id is how the CLI and the agent refer to this prompt. Fixed
+            width and right-aligned so a 2-digit id cannot shift the text. */}
+        <span className="text-muted-foreground/70 w-5 shrink-0 text-right font-mono text-[11px] leading-6 tabular-nums">
           {prompt.id}
         </span>
         <span
           className={cn(
-            "min-w-0 flex-1 font-mono text-[13px] leading-relaxed",
-            prompt.status === "done" && "text-muted-foreground",
-            open ? "break-words whitespace-pre-wrap" : "truncate"
+            "min-w-0 flex-1 text-[13.5px] leading-relaxed",
+            done ? "text-muted-foreground line-through decoration-1" : "text-foreground",
+            open ? "break-words whitespace-pre-wrap" : "line-clamp-1"
           )}
         >
           {prompt.text}
         </span>
-        {expandable && !open && (
-          <span className="text-muted-foreground shrink-0 text-[11px]">
-            {lines.length > 1 ? `+${lines.length - 1} lines` : "more"}
-          </span>
-        )}
       </button>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5 self-start pt-1">
         {showProject && (
-          <Badge variant="outline" className="font-mono text-[10px] font-normal">
+          /* In the mixed All-projects view the owner matters more than the
+             timestamp, so this badge survives down to the narrowest screen. */
+          <Badge variant="outline" className="max-w-24 truncate sm:max-w-32">
             {prompt.projectName}
           </Badge>
         )}
-        {prompt.status === "in_progress" && (
-          <Badge variant="secondary" className="text-[10px]">
+        {running && (
+          <Badge variant="secondary" className="gap-1.5">
+            <span className="bg-primary size-1.5 animate-pulse rounded-full" />
             running
           </Badge>
         )}
-        <span className="text-muted-foreground hidden text-[11px] whitespace-nowrap sm:inline">
-          {when(prompt.done_at || prompt.created_at)}
+        {!open && lines.length > 1 && (
+          <span className="text-muted-foreground hidden text-xs tabular-nums lg:inline">
+            +{lines.length - 1}
+          </span>
+        )}
+
+        {/* Meta and actions occupy the same slot: the timestamp is the resting
+            state, the buttons take over on hover so the row stops shifting. */}
+        <span className="relative flex h-7 items-center justify-end sm:w-[7.75rem]">
+          <span className="text-muted-foreground hidden pr-1.5 text-xs whitespace-nowrap transition-opacity group-focus-within:opacity-0 group-hover:opacity-0 sm:inline">
+            {when(prompt.done_at || prompt.created_at)}
+          </span>
+          {/* Touch has no hover, and four icon buttons would eat the width a
+              phone needs for the prompt itself — so one menu below sm. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon-sm" aria-label="Actions" />}
+              className="sm:hidden"
+            >
+              <MoreHorizontal />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setEditing(true)}>
+                <Pencil />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onStatus(prompt.id, done ? "pending" : "done")}
+              >
+                {done ? <CornerUpLeft /> : <Check />}
+                {done ? "Requeue" : "Mark done"}
+              </DropdownMenuItem>
+              {targets.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  {/* Base UI requires a Group around a menu label. */}
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Move to</DropdownMenuLabel>
+                    {targets.map((project) => (
+                      <DropdownMenuItem
+                        key={project.project}
+                        onClick={() => onMove(prompt.id, project.project)}
+                      >
+                        {project.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={() => onRemove(prompt.id)}>
+                <Trash2 />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <span
+            className={cn(
+              "hidden items-center gap-px sm:absolute sm:inset-y-0 sm:right-0 sm:flex",
+              "sm:opacity-0 sm:transition-opacity sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
+            )}
+          >
+            <Action label="Edit" onClick={() => setEditing(true)}>
+              <Pencil />
+            </Action>
+
+            {done ? (
+              <Action label="Requeue" onClick={() => onStatus(prompt.id, "pending")}>
+                <CornerUpLeft />
+              </Action>
+            ) : (
+              <Action label="Mark done" onClick={() => onStatus(prompt.id, "done")}>
+                <Check />
+              </Action>
+            )}
+
+            {targets.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="ghost" size="icon-sm" aria-label="Move to project" />
+                  }
+                >
+                  <FolderInput />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Move to</DropdownMenuLabel>
+                    {targets.map((project) => (
+                      <DropdownMenuItem
+                        key={project.project}
+                        onClick={() => onMove(prompt.id, project.project)}
+                      >
+                        {project.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            <Action label="Delete" destructive onClick={() => onRemove(prompt.id)}>
+              <Trash2 />
+            </Action>
+          </span>
         </span>
-
-        {/* Actions stay hidden until the row is touched — that is what keeps a
-            long queue scannable. Focus-within keeps them keyboard reachable. */}
-        <div className="flex items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-          <Action label="Edit" onClick={() => setEditing(true)}>
-            <Pencil className="size-3.5" />
-          </Action>
-
-          {prompt.status === "done" ? (
-            <Action label="Requeue" onClick={() => onStatus(prompt.id, "pending")}>
-              <CornerUpLeft className="size-3.5" />
-            </Action>
-          ) : (
-            <Action label="Mark done" onClick={() => onStatus(prompt.id, "done")}>
-              <Check className="size-3.5" />
-            </Action>
-          )}
-
-          {targets.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-7">
-                  <FolderInput className="size-3.5" />
-                  <span className="sr-only">Move to project</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Move to</DropdownMenuLabel>
-                {targets.map((project) => (
-                  <DropdownMenuItem
-                    key={project.project}
-                    onSelect={() => onMove(prompt.id, project.project)}
-                  >
-                    {project.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          <Action label="Delete" destructive onClick={() => onRemove(prompt.id)}>
-            <Trash2 className="size-3.5" />
-          </Action>
-        </div>
       </div>
     </div>
   );
