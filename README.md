@@ -11,7 +11,7 @@ appear in the transcript, and you can line up work while the agent is busy.
 ## Quick start
 
 ```bash
-npx -y prompt-vault-cli
+npx -y agent-prompt-vault
 ```
 
 That starts a loopback-only server and opens the queue for the current
@@ -25,7 +25,7 @@ database directly, so they work whether or not the browser page is running.
 Install it once so the commands below are short:
 
 ```bash
-npm install -g prompt-vault-cli
+npm install -g agent-prompt-vault
 ```
 
 ```bash
@@ -86,7 +86,7 @@ codex plugin add prompt-vault@prompt-vault
 Open **Cursor Settings**, find the plugins section, add this repo
 (`aagam-headout/prompt-vault`) as a marketplace, then add the plugin.
 
-The skills only shell out to `npx -y prompt-vault-cli`, the package published from
+The skills only shell out to `npx -y agent-prompt-vault`, the package published from
 this repository, so an agent following a skill always resolves the same
 published name. The plugin itself is two markdown files; there is nothing to
 keep in sync between the plugin and the app, and publishing a new version

@@ -16,7 +16,7 @@ transcript.
    agent will not read. It reports the problem itself if Node is too old.
 
    ```sh
-   pv() { if command -v prompt-vault >/dev/null 2>&1; then prompt-vault "$@"; else npx -y prompt-vault-cli "$@"; fi; }
+   pv() { if command -v prompt-vault >/dev/null 2>&1; then prompt-vault "$@"; else npx -y agent-prompt-vault "$@"; fi; }
    pv
    ```
 
@@ -36,4 +36,4 @@ transcript.
   claims only this one's. Any directory in the repository resolves to one queue.
 - `pv list` answers "what's queued?" without opening the page. `pv --no-open`
   starts without a browser, `pv --stop` stops the server.
-- `npm install -g prompt-vault-cli` skips the `npx` fetch on every call.
+- `npm install -g agent-prompt-vault` skips the `npx` fetch on every call.

@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 // prompt-vault — a local prompt queue for coding agents.
 //
-//   npx prompt-vault-cli                 start the vault (if needed) and open it
-//   npx prompt-vault-cli --no-open       start only, print the URL
-//   npx prompt-vault-cli --stop          stop the running vault
+//   npx agent-prompt-vault                 start the vault (if needed) and open it
+//   npx agent-prompt-vault --no-open       start only, print the URL
+//   npx agent-prompt-vault --stop          stop the running vault
 //
-//   npx prompt-vault-cli next            claim the next pending prompt
-//   npx prompt-vault-cli next 2          claim the next 2
-//   npx prompt-vault-cli next --all      claim every pending prompt
-//   npx prompt-vault-cli done 7          mark prompt 7 done
-//   npx prompt-vault-cli done 7 8 9      mark several done
-//   npx prompt-vault-cli reset           hand every claimed prompt back to the queue
-//   npx prompt-vault-cli reset 7         hand prompt 7 back
-//   npx prompt-vault-cli list            show this project's queue
+//   npx agent-prompt-vault next            claim the next pending prompt
+//   npx agent-prompt-vault next 2          claim the next 2
+//   npx agent-prompt-vault next --all      claim every pending prompt
+//   npx agent-prompt-vault done 7          mark prompt 7 done
+//   npx agent-prompt-vault done 7 8 9      mark several done
+//   npx agent-prompt-vault reset           hand every claimed prompt back to the queue
+//   npx agent-prompt-vault reset 7         hand prompt 7 back
+//   npx agent-prompt-vault list            show this project's queue
 //
 // `next`, `done`, and `list` talk to the database directly, so they work
 // whether or not the browser vault is running.
@@ -208,7 +208,7 @@ async function commandOpen(opts, port) {
     const mismatch = identityMismatch(running);
     if (mismatch) {
       console.error(`prompt-vault: refusing to reuse port ${port} — ${mismatch}`);
-      die(`stop it (\`npx prompt-vault-cli --stop --port ${port}\`, or kill ${running.pid}) or pick another port with --port`);
+      die(`stop it (\`npx agent-prompt-vault --stop --port ${port}\`, or kill ${running.pid}) or pick another port with --port`);
     }
     console.log(`prompt-vault: already running on port ${port}`);
   } else {
@@ -291,8 +291,8 @@ function commandNext(opts) {
   printPrompts(claimed, opts);
   if (!opts.json) {
     const ids = claimed.map((p) => p.id).join(" ");
-    console.log(`Mark each done as you finish it: npx prompt-vault-cli done <id>   (claimed: ${ids})`);
-    console.log(`If you cannot finish them: npx prompt-vault-cli reset ${ids}`);
+    console.log(`Mark each done as you finish it: npx agent-prompt-vault done <id>   (claimed: ${ids})`);
+    console.log(`If you cannot finish them: npx agent-prompt-vault reset ${ids}`);
   }
 }
 
