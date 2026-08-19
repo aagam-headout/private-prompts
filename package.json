@@ -1,6 +1,6 @@
 {
   "name": "agent-prompt-vault",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Local prompt queue for coding agents. Draft prompts in a browser, agents claim them and mark them done.",
   "license": "MIT",
   "type": "module",
