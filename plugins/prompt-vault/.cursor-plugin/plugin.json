@@ -1,0 +1,20 @@
+{
+  "name": "prompt-vault",
+  "displayName": "Prompt Vault",
+  "description": "Queue prompts in a local browser page, outside the current repository's working tree, and work through them one at a time.",
+  "version": "2.1.0",
+  "author": {
+    "name": "aagam-headout"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/aagam-headout/prompt-vault",
+  "repository": "https://github.com/aagam-headout/prompt-vault",
+  "keywords": [
+    "privacy",
+    "prompts",
+    "queue",
+    "local-first",
+    "productivity"
+  ],
+  "skills": "./skills/"
+}

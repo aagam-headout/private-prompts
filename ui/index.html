@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Prompt Vault</title>
+    <script>
+      // shadcn's dark tokens hang off a `.dark` class. Resolve the theme before
+      // first paint so the page never flashes the wrong one. A stored choice
+      // wins; otherwise follow the OS and keep following it as it changes.
+      (function () {
+        var query = window.matchMedia("(prefers-color-scheme: dark)");
+        var stored = null;
+        try {
+          stored = localStorage.getItem("pv-theme");
+        } catch (err) {
+          /* private mode — fall back to the OS preference */
+        }
+        var apply = function () {
+          var choice = stored || "system";
+          var dark = choice === "dark" || (choice === "system" && query.matches);
+          document.documentElement.classList.toggle("dark", dark);
+        };
+        apply();
+        query.addEventListener("change", apply);
+        // App.jsx re-runs this after writing a new choice.
+        window.__pvApplyTheme = function (next) {
+          stored = next === "system" ? null : next;
+          apply();
+        };
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
