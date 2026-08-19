@@ -33,7 +33,7 @@ export function read(name) {
   try {
     return fs.readFileSync(file, "utf8");
   } catch {
-    throw new Error(`no template named "${name}" — run \`prompt-vault template list\``);
+    throw new Error(`no template named "${name}" — run \`agent-prompt-vault template list\``);
   }
 }
 
