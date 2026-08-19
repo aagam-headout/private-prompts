@@ -5,6 +5,9 @@
 //   npx agent-prompt-vault --no-open       start only, print the URL
 //   npx agent-prompt-vault --stop          stop the running vault
 //
+//   npx agent-prompt-vault add "text"                 queue a new prompt
+//   npx agent-prompt-vault add < file.txt             queue a prompt read from stdin
+//   npx agent-prompt-vault add --each-line < tasks.txt  queue one prompt per line
 //   npx agent-prompt-vault next            claim the next pending prompt
 //   npx agent-prompt-vault next 2          claim the next 2
 //   npx agent-prompt-vault next --all      claim every pending prompt
@@ -13,15 +16,25 @@
 //   npx agent-prompt-vault reset           hand every claimed prompt back to the queue
 //   npx agent-prompt-vault reset 7         hand prompt 7 back
 //   npx agent-prompt-vault list            show this project's queue
+//   npx agent-prompt-vault list --pending-only     show only pending prompts
+//   npx agent-prompt-vault peek             show the next pending prompt, without claiming it
+//   npx agent-prompt-vault peek 3           show the next 3 pending prompts
+//   npx agent-prompt-vault add --template refactor   queue a saved prompt skeleton
+//   npx agent-prompt-vault template save refactor "text"  save a reusable skeleton
+//   npx agent-prompt-vault template list             list saved skeletons
+//   npx agent-prompt-vault template show refactor    print a saved skeleton
+//   npx agent-prompt-vault template remove refactor  delete a saved skeleton
 //
-// `next`, `done`, and `list` talk to the database directly, so they work
-// whether or not the browser vault is running.
+// `next`, `done`, `list`, and `peek` talk to the database directly, so they
+// work whether or not the browser vault is running.
 //
 // A working directory inside a git repository resolves to the repository root,
 // so an agent started in a subdirectory shares one queue with the root.
 //
 // Flags: --cwd <path> (default: current directory), --port <n>, --json,
-//        --force (let done/reset touch another project's prompt).
+//        --force (let done/reset touch another project's prompt),
+//        --status <pending|in_progress|done> and --pending-only (list),
+//        --template <name> (add).
 // Environment: PV_DATA_DIR (default ~/.prompt-vault), PV_PORT (default 8974).
 import http from "node:http";
 import fs from "node:fs";
@@ -29,6 +42,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { silenceSqliteWarning } from "./quiet.js";
+import * as templates from "./templates.js";
 
 silenceSqliteWarning();
 
@@ -67,7 +81,7 @@ function die(message) {
 function parseArgs(argv) {
   const opts = {
     command: "open", cwd: process.cwd(), open: true, port: null,
-    count: 1, ids: [], json: false, force: false,
+    count: 1, ids: [], json: false, force: false, status: null, template: null,
   };
   const positional = [];
   // A flag that swallowed the next token would silently point --cwd at
@@ -77,6 +91,12 @@ function parseArgs(argv) {
     if (raw === undefined || raw.startsWith("-")) die(`${flag} needs a value`);
     return raw;
   };
+  // --pending-only and --status both set opts.status; tracked separately here
+  // so whichever came later in argv can't silently win over the other without
+  // at least agreeing on "pending" — argv order deciding the outcome is worse
+  // than refusing to guess.
+  let pendingOnly = false;
+  let statusFlag = null;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--cwd") opts.cwd = path.resolve(value(++i, "--cwd"));
@@ -91,16 +111,27 @@ function parseArgs(argv) {
     else if (arg === "--all") opts.count = -1; // SQLite reads LIMIT -1 as unbounded
     else if (arg === "--json") opts.json = true;
     else if (arg === "--force") opts.force = true;
+    else if (arg === "--each-line") opts.eachLine = true;
+    else if (arg === "--pending-only") pendingOnly = true;
+    else if (arg === "--status") {
+      const raw = value(++i, "--status");
+      if (!db.STATUSES.includes(raw)) die(`--status needs one of ${db.STATUSES.join(", ")}, got "${raw}"`);
+      statusFlag = raw;
+    } else if (arg === "--template") opts.template = value(++i, "--template");
     else if (arg === "-h" || arg === "--help") {
       usage();
       process.exit(0);
     } else if (arg.startsWith("-")) die(`unknown option ${arg}`);
     else positional.push(arg);
   }
+  if (pendingOnly && statusFlag && statusFlag !== "pending") {
+    die(`--pending-only conflicts with --status ${statusFlag}`);
+  }
+  opts.status = statusFlag ?? (pendingOnly ? "pending" : null);
 
   if (positional.length) {
     const [command, ...rest] = positional;
-    if (!["open", "next", "done", "list", "reset", "stop"].includes(command)) {
+    if (!["open", "add", "next", "done", "list", "reset", "stop", "peek", "template"].includes(command)) {
       die(`unknown command "${command}" — try --help`);
     }
     opts.command = command;
@@ -111,7 +142,13 @@ function parseArgs(argv) {
       if (!Number.isInteger(n) || n < 1) die(`${label} needs prompt ids, got "${raw}"`);
       return n;
     });
-    if (command === "next") {
+    if (command === "add") {
+      // Joined rather than quoted-required: `add fix the login bug` reads
+      // naturally, same as `git commit -m` without quotes would not. Left
+      // undefined (not "") when no args were given, so `add ""` still reaches
+      // db's "empty prompt" error instead of silently falling to stdin.
+      if (rest.length) opts.text = rest.join(" ");
+    } else if (command === "next") {
       if (rest.length > 1) die(`next takes one count, got "${rest.join(" ")}"`);
       if (rest.length === 1) {
         const n = Number(rest[0]);
@@ -123,9 +160,42 @@ function parseArgs(argv) {
       if (!opts.ids.length) die("done needs a prompt id, e.g. `done 7`");
     } else if (command === "reset") {
       opts.ids = ids("reset"); // empty means every claimed prompt in this project
+    } else if (command === "peek") {
+      if (rest.length > 1) die(`peek takes one count, got "${rest.join(" ")}"`);
+      if (rest.length === 1) {
+        const n = Number(rest[0]);
+        if (!Number.isInteger(n) || n < 1) die(`peek needs a positive count, got "${rest[0]}"`);
+        opts.count = n;
+      }
+    } else if (command === "template") {
+      const [action, name, ...textParts] = rest;
+      if (!["save", "list", "show", "remove"].includes(action)) {
+        die(`template needs an action: save, list, show, or remove — got "${action ?? ""}"`);
+      }
+      opts.templateAction = action;
+      if (action === "list") {
+        if (rest.length > 1) die(`template list takes no arguments, got "${rest.slice(1).join(" ")}"`);
+      } else {
+        if (!name) die(`template ${action} needs a name, e.g. \`template ${action} refactor\``);
+        opts.templateName = name;
+        // save is the only action that takes trailing text; show/remove
+        // dropping extra words silently would look like they'd been handled.
+        if (action !== "save" && textParts.length) {
+          die(`template ${action} takes no arguments beyond the name, got "${textParts.join(" ")}"`);
+        }
+        // Left undefined (not "") when no text was given, so `save` falls back
+        // to stdin the same way `add` does.
+        if (action === "save" && textParts.length) opts.templateText = textParts.join(" ");
+      }
     } else if (rest.length) {
       die(`${command} takes no arguments, got "${rest.join(" ")}"`);
     }
+  }
+  // --status/--pending-only only mean something to `list`; letting them
+  // silently no-op on other commands (e.g. `peek --status done` still only
+  // ever looks at pending) hides that the flag was ignored.
+  if (opts.status !== null && opts.command !== "list") {
+    die(`--status/--pending-only only apply to \`list\`, not \`${opts.command}\``);
   }
   return opts;
 }
@@ -280,6 +350,66 @@ function printPrompts(prompts, opts) {
   }
 }
 
+// Args win when given; otherwise fall back to stdin so a multi-line prompt
+// can be piped in (`cat prompt.txt | prompt-vault add`) instead of forcing it
+// onto one shell-quoted line. Refusing when stdin is a TTY stops `add` with no
+// arguments from hanging, waiting on input that will never arrive.
+function commandAdd(opts) {
+  if (opts.eachLine && opts.text !== undefined) die("--each-line reads prompts from stdin, not from arguments");
+  if (opts.eachLine && opts.template !== null) die("--each-line and --template do not combine — a template is one prompt");
+  const project = db.projectFor(opts.cwd);
+
+  if (opts.template !== null) {
+    // Reading the template happens before touching stdin: a bad name should
+    // fail loud, not after the terminal is left waiting on input that was
+    // never coming.
+    const skeleton = templates.read(opts.template).trim();
+    // Extra text (arguments or piped stdin) appends as its own paragraph,
+    // rather than replacing the skeleton — the point is to extend a known
+    // shape, not to route around it.
+    let extra = opts.text;
+    if (extra === undefined && !process.stdin.isTTY) extra = fs.readFileSync(0, "utf8").trim();
+    const text = extra ? `${skeleton}\n\n${extra}` : skeleton;
+    const prompt = db.add({ project, text });
+    if (opts.json) {
+      console.log(JSON.stringify(prompt, null, 2));
+      return;
+    }
+    console.log(`prompt-vault: queued prompt ${prompt.id} (from template "${opts.template}")`);
+    return;
+  }
+
+  if (opts.eachLine) {
+    if (process.stdin.isTTY) die("--each-line needs piped input, e.g. `add --each-line < tasks.txt`");
+    const lines = fs.readFileSync(0, "utf8").split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) die("no non-empty lines to queue");
+    // One transaction for the whole batch: db.js's other multi-row writers
+    // (claim, reorder) commit atomically too, so a failure partway through
+    // doesn't leave some lines queued and others not.
+    const queued = db.addMany(project, lines);
+    if (opts.json) {
+      console.log(JSON.stringify(queued, null, 2));
+      return;
+    }
+    console.log(`prompt-vault: queued ${queued.length} prompts: ${queued.map((p) => p.id).join(" ")}`);
+    return;
+  }
+
+  // undefined (no args given) falls back to stdin; "" (an explicit empty
+  // argument) is left alone so db.add's "empty prompt" error still fires.
+  let text = opts.text;
+  if (text === undefined) {
+    if (process.stdin.isTTY) die(`add needs prompt text, e.g. \`add fix the login bug\`, or pipe text on stdin`);
+    text = fs.readFileSync(0, "utf8");
+  }
+  const prompt = db.add({ project, text });
+  if (opts.json) {
+    console.log(JSON.stringify(prompt, null, 2));
+    return;
+  }
+  console.log(`prompt-vault: queued prompt ${prompt.id}`);
+}
+
 function commandNext(opts) {
   const project = db.projectFor(opts.cwd);
   const claimed = db.claim(project, opts.count);
@@ -353,13 +483,17 @@ function commandReset(opts) {
 function commandList(opts) {
   const project = db.projectFor(opts.cwd);
   // -1: the CLI prints the whole history, not the browser's capped view.
-  const prompts = db.list({ project, doneLimit: -1 });
+  const prompts = db.list({ project, status: opts.status, doneLimit: -1 });
   if (opts.json) {
     console.log(JSON.stringify(prompts, null, 2));
     return;
   }
   if (!prompts.length) {
-    console.log(`prompt-vault: queue is empty for ${project}`);
+    console.log(
+      opts.status
+        ? `prompt-vault: no ${opts.status} prompts for ${project}`
+        : `prompt-vault: queue is empty for ${project}`
+    );
     return;
   }
   for (const prompt of prompts) {
@@ -367,6 +501,69 @@ function commandList(opts) {
     const summary = firstLine.length > 68 ? `${firstLine.slice(0, 67)}…` : firstLine;
     console.log(`${String(prompt.id).padStart(4)}  ${prompt.status.padEnd(11)}  ${summary}`);
   }
+}
+
+// Read-only look at what `next` would claim — same order, same count
+// semantics, but never flips status, so an agent (or a person) can check the
+// queue without taking a prompt off it.
+function commandPeek(opts) {
+  const project = db.projectFor(opts.cwd);
+  const prompts = db.list({ project, status: "pending", doneLimit: -1 }).slice(
+    0,
+    opts.count === -1 ? undefined : opts.count
+  );
+  if (!prompts.length) {
+    if (opts.json) console.log("[]");
+    else console.log(`prompt-vault: no pending prompts for ${project}`);
+    return;
+  }
+  printPrompts(prompts, opts);
+}
+
+function commandTemplate(opts) {
+  if (opts.templateAction === "list") {
+    const names = templates.list();
+    if (opts.json) {
+      console.log(JSON.stringify(names, null, 2));
+      return;
+    }
+    if (!names.length) {
+      console.log("prompt-vault: no saved templates — `template save <name> \"text\"`");
+      return;
+    }
+    for (const name of names) console.log(name);
+    return;
+  }
+
+  if (opts.templateAction === "show") {
+    console.log(templates.read(opts.templateName).trim());
+    return;
+  }
+
+  if (opts.templateAction === "remove") {
+    const removed = templates.remove(opts.templateName);
+    if (opts.json) {
+      console.log(JSON.stringify({ name: opts.templateName, removed }));
+      return;
+    }
+    console.log(
+      removed
+        ? `prompt-vault: removed template "${opts.templateName}"`
+        : `prompt-vault: no template named "${opts.templateName}"`
+    );
+    return;
+  }
+
+  // save
+  let text = opts.templateText;
+  if (text === undefined) {
+    if (process.stdin.isTTY) {
+      die(`template save needs text, e.g. \`template save ${opts.templateName} "text"\`, or pipe text on stdin`);
+    }
+    text = fs.readFileSync(0, "utf8");
+  }
+  templates.save(opts.templateName, text);
+  console.log(`prompt-vault: saved template "${opts.templateName}"`);
 }
 
 // ---------- main ----------
@@ -379,10 +576,13 @@ const port = opts.port !== null ? opts.port
 try {
   if (opts.command === "open") await commandOpen(opts, port);
   else if (opts.command === "stop") await commandStop(port);
+  else if (opts.command === "add") commandAdd(opts);
   else if (opts.command === "next") commandNext(opts);
   else if (opts.command === "done") commandDone(opts);
   else if (opts.command === "reset") commandReset(opts);
   else if (opts.command === "list") commandList(opts);
+  else if (opts.command === "peek") commandPeek(opts);
+  else if (opts.command === "template") commandTemplate(opts);
 } catch (err) {
   die(err.message);
 }
